@@ -40,11 +40,19 @@ def log(msg, level="INFO", section="MAIN"):
 def get_public_ip(ip_service):
     """
     Fetches the public IPv4 address from the given service.
+    Now includes validation to ensure the result is actually an IPv4 address.
     """
     try:
         response = requests.get(ip_service, timeout=10)
         response.raise_for_status()
-        return response.text.strip()
+        ip = response.text.strip()
+        
+        # Validate that it's actually an IPv4 address
+        if validate_ipv4(ip):
+            return ip
+        else:
+            log(f"Service {ip_service} returned invalid IPv4 format: {ip}", "ERROR", section="IPV4")
+            return None
     except Exception as e:
         log(f"Error fetching public IP: {e}", "ERROR")
         return None
@@ -52,11 +60,19 @@ def get_public_ip(ip_service):
 def get_public_ipv6(ip_service="https://api64.ipify.org"):
     """
     Fetches the public IPv6 address from the given service.
+    Now includes validation to ensure the result is actually an IPv6 address.
     """
     try:
-        response = requests.get(ip_service)
+        response = requests.get(ip_service, timeout=10)
         response.raise_for_status()
-        return response.text.strip()
+        ip6 = response.text.strip()
+        
+        # Validate that it's actually an IPv6 address
+        if validate_ipv6(ip6):
+            return ip6
+        else:
+            log(f"Service {ip_service} returned invalid IPv6 format: {ip6}", "ERROR", section="IPV6")
+            return None
     except Exception as e:
         log(f"Error fetching public IPv6: {e}", "ERROR")
         return None
