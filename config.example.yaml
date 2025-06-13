@@ -9,13 +9,15 @@ loglevel: INFO   # Possible values: DEBUG, INFO, WARNING, ERROR, CRITICAL
 
 # Service to fetch the public IPv4 address
 ip_service: "https://api.ipify.org"
-# Or use a local network interface instead:
-# interface: "eth0"
+# Or use a local network interface instead 
+# (requires Docker to run with --network host or network_mode: host):
+interface: "eth0"  # Replace with your actual interface name
 
 # Service to fetch the public IPv6 address (optional)
 # ip6_service: "https://api64.ipify.org"
-# Or use a local network interface instead:
-# interface6: "eth0"
+# Or use a local network interface instead
+# (requires Docker to run with --network host or network_mode: host):
+interface6: "eth0"  # Replace with your actual interface name
 
 skip_update_on_startup: true  # If true, no provider updates will be performed on container start if the IP has not changed.
 # If false or not set, an update will always be performed on startup, even if the IP is the same.
@@ -144,6 +146,28 @@ providers:
     url: "https://example.com/nic/update"
     token: "your_token"
     host: "yourhost.example.com"
+
+## Network Interface Configuration
+
+This application supports retrieving IP addresses from local network interfaces instead of using external services. This can be useful when:
+
+- You're in a network without internet access
+- You have a dedicated public IPv4/IPv6 address assigned to an interface
+- You want to avoid dependency on external IP services
+
+### Requirements for Interface Mode
+
+To use this feature with Docker, you must run the container with host network mode:
+
+```yaml
+# docker-compose.yml example
+services:
+  dyndns:
+    image: alex-1987/dyndns-docker-client:latest
+    network_mode: host  # This is required to access host interfaces!
+    volumes:
+      - ./config:/app/config
+```
 
 # Notes:
 # - For dyndns2 providers, the 'url' field is required!

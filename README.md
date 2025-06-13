@@ -225,3 +225,25 @@ If you find bugs or have suggestions, please open an issue in the repository!
 
 ---
 
+## Network Interface Configuration
+
+This application supports retrieving IP addresses from local network interfaces instead of using external services. This can be useful when:
+
+- You're in a network without internet access
+- You have a dedicated public IPv4/IPv6 address assigned to an interface
+- You want to avoid dependency on external IP services
+
+### Requirements for Interface Mode
+
+To use this feature with Docker, you must run the container with host network mode:
+
+```yaml
+# docker-compose.yml example
+services:
+  dyndns:
+    image: alex-1987/dyndns-docker-client:latest
+    network_mode: host  # This is required ONLY when using interface mode!
+    volumes:
+      - ./config:/app/config
+```
+

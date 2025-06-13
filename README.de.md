@@ -220,3 +220,28 @@ Dieses Projekt wurde mit Unterstützung von **GitHub Copilot** erstellt.
 Bei Fehlern oder Verbesserungsvorschlägen gerne ein Issue im Repository eröffnen!
 
 ---
+
+# Deutsche README-Aktualisierung
+
+```markdown
+## Netzwerkschnittstellen-Konfiguration
+
+Diese Anwendung unterstützt das Abrufen von IP-Adressen von lokalen Netzwerkschnittstellen anstelle von externen Diensten. Dies kann nützlich sein, wenn:
+
+- Du dich in einem Netzwerk ohne Internetzugang befindest
+- Du eine dedizierte öffentliche IPv4/IPv6-Adresse hast, die einer Schnittstelle zugewiesen ist
+- Du die Abhängigkeit von externen IP-Diensten vermeiden möchtest
+
+### Anforderungen für den Interface-Modus
+
+Um diese Funktion mit Docker zu nutzen, musst du den Container im Host-Netzwerkmodus ausführen:
+
+```yaml
+# docker-compose.yml Beispiel
+services:
+  dyndns:
+    image: alex-1987/dyndns-docker-client:latest
+    network_mode: host  # Dies ist NUR bei Verwendung des Interface-Modus erforderlich!
+    volumes:
+      - ./config:/app/config
+```
