@@ -3,7 +3,7 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Installiere benötigte Python-Module
-RUN pip install --no-cache-dir requests pyyaml
+RUN pip install --no-cache-dir requests pyyaml netifaces==0.11.0 ipaddress==1.0.23
 
 # Kopiere Quellcode und Beispiel-Konfiguration ins Image
 COPY update_dyndns.py /app/update_dyndns.py

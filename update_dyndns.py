@@ -5,6 +5,8 @@ import requests
 import yaml
 import logging
 from notify import send_notifications
+import netifaces
+import ipaddress
 
 config = None  # global, so update_provider can access it
 
@@ -417,6 +419,86 @@ def update_provider(provider, ip, ip6=None, log_success_if_nochg=True, old_ip=No
         )
         return False
 
+def get_interface_ipv4(interface_name):
+    """
+    Gets the IPv4 address from the specified network interface.
+    Returns None if the interface doesn't exist or has no IPv4 address.
+    """
+    try:
+        if interface_name not in netifaces.interfaces():
+            log(f"Interface '{interface_name}' not found", "ERROR", section="INTERFACE")
+            return None
+            
+        addrs = netifaces.ifaddresses(interface_name)
+        if netifaces.AF_INET not in addrs:
+            log(f"No IPv4 address found for interface '{interface_name}'", "ERROR", section="INTERFACE")
+            return None
+            
+        for addr in addrs[netifaces.AF_INET]:
+            ip = addr.get('addr')
+            if ip and validate_ipv4(ip):
+                log(f"Found IPv4 address {ip} on interface '{interface_name}'", "INFO", section="INTERFACE")
+                return ip
+                
+        return None
+    except Exception as e:
+        log(f"Error getting IPv4 address from interface '{interface_name}': {e}", "ERROR", section="INTERFACE")
+        return None
+
+def get_interface_ipv6(interface_name):
+    """
+    Gets the IPv6 address from the specified network interface.
+    Returns None if the interface doesn't exist or has no IPv6 address.
+    Filters out link-local addresses (starting with fe80).
+    """
+    try:
+        if interface_name not in netifaces.interfaces():
+            log(f"Interface '{interface_name}' not found", "ERROR", section="INTERFACE")
+            return None
+            
+        addrs = netifaces.ifaddresses(interface_name)
+        if netifaces.AF_INET6 not in addrs:
+            log(f"No IPv6 address found for interface '{interface_name}'", "ERROR", section="INTERFACE")
+            return None
+            
+        for addr in addrs[netifaces.AF_INET6]:
+            ip = addr.get('addr')
+            # Remove scope ID if present (e.g., %eth0)
+            if ip and '%' in ip:
+                ip = ip.split('%')[0]
+                
+            if ip and validate_ipv6(ip) and not ip.startswith('fe80'):
+                log(f"Found IPv6 address {ip} on interface '{interface_name}'", "INFO", section="INTERFACE")
+                return ip
+                
+        log(f"No valid public IPv6 address found on interface '{interface_name}'", "WARNING", section="INTERFACE")
+        return None
+    except Exception as e:
+        log(f"Error getting IPv6 address from interface '{interface_name}': {e}", "ERROR", section="INTERFACE")
+        return None
+
+def validate_ipv4(ip):
+    """
+    Validates if the given string is a valid IPv4 address.
+    """
+    try:
+        # Use ipaddress module to validate
+        ipaddress.IPv4Address(ip)
+        return True
+    except ValueError:
+        return False
+
+def validate_ipv6(ip):
+    """
+    Validates if the given string is a valid IPv6 address.
+    """
+    try:
+        # Use ipaddress module to validate
+        ipaddress.IPv6Address(ip)
+        return True
+    except ValueError:
+        return False
+
 def main():
     global config
     config_path = 'config/config.yaml'
@@ -459,21 +541,62 @@ def main():
         log("Configuration invalid. Program will exit.", "CRITICAL")
         sys.exit(1)
     timer = config.get('timer', 300)
-    ip_service = config.get('ip_service', 'https://api.ipify.org')
+    ip_service = config.get('ip_service', None)
+    ip_interface = config.get('interface', None)
     ip6_service = config.get('ip6_service', None)
+    ip6_interface = config.get('interface6', None)
     providers = config['providers']
 
-    log(f"Testing reachability of ip_service: {ip_service}", section="MAIN")
-    test_ip = get_public_ip(ip_service) if ip_service else None
-    test_ip6 = get_public_ipv6(ip6_service) if ip6_service else None
+    # Get IP configuration method
+    ip_service = config.get('ip_service', None)
+    ip_interface = config.get('interface', None)
+    ip6_service = config.get('ip6_service', None)
+    ip6_interface = config.get('interface6', None)
+    
+    # Log the configuration
+    if ip_service:
+        log(f"Using service to determine IPv4: {ip_service}", section="MAIN")
+    elif ip_interface:
+        log(f"Using interface to determine IPv4: {ip_interface}", section="MAIN") 
+    else:
+        log("No method configured to determine IPv4", "WARNING", section="MAIN")
+        
+    if ip6_service:
+        log(f"Using service to determine IPv6: {ip6_service}", section="MAIN")
+    elif ip6_interface:
+        log(f"Using interface to determine IPv6: {ip6_interface}", section="MAIN")
+    
+    # Get IPv4 address
+    test_ip = None
+    if ip_service:
+        test_ip = get_public_ip(ip_service)
+    elif ip_interface:
+        test_ip = get_interface_ipv4(ip_interface)
+        
+    # Get IPv6 address
+    test_ip6 = None
+    if ip6_service:
+        test_ip6 = get_public_ipv6(ip6_service)
+    elif ip6_interface:
+        test_ip6 = get_interface_ipv6(ip6_interface)
+    
+    # Validate IPs and send notifications for invalid IPs
+    if test_ip is not None and not validate_ipv4(test_ip):
+        error_msg = f"Invalid IPv4 address detected: {test_ip}"
+        log(error_msg, "ERROR", section="MAIN")
+        send_notifications(config.get("notify"), "ERROR", error_msg, "Invalid IPv4 Address")
+        test_ip = None
+        
+    if test_ip6 is not None and not validate_ipv6(test_ip6):
+        error_msg = f"Invalid IPv6 address detected: {test_ip6}"
+        log(error_msg, "ERROR", section="MAIN")
+        send_notifications(config.get("notify"), "ERROR", error_msg, "Invalid IPv6 Address")
+        test_ip6 = None
+    
     if not test_ip and not test_ip6:
-        log("Program will exit because neither ip_service nor ip6_service is reachable.", "CRITICAL")
-        return
-    if test_ip:
-        log(f"ip_service reachable. Public IP: {test_ip}", section="MAIN")
-    if test_ip6:
-        log(f"ip6_service reachable. Public IPv6: {test_ip6}", section="MAIN")
-
+        log("No valid IP address could be determined. Program will exit.", "CRITICAL")
+        sys.exit(1)
+    
     # --- PATCH: skip_update_on_startup ---
     skip_on_startup = config.get("skip_update_on_startup", False)
     last_ip = load_last_ip("v4")

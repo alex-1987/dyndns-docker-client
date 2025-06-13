@@ -9,18 +9,13 @@ loglevel: INFO   # Possible values: DEBUG, INFO, WARNING, ERROR, CRITICAL
 
 # Service to fetch the public IPv4 address
 ip_service: "https://api.ipify.org"
-# ip_service: "https://ipv4.icanhazip.com"
-# ip_service: "https://checkip.amazonaws.com"
-# ip_service: "https://ifconfig.me/ip"
-# ip_service: "https://ident.me"
-# ip_service: "https://myexternalip.com/raw"
+# Or use a local network interface instead:
+# interface: "eth0"
 
 # Service to fetch the public IPv6 address (optional)
 # ip6_service: "https://api64.ipify.org"
-# ip6_service: "https://ipv6.icanhazip.com"
-# ip6_service: "https://ifconfig.co/ip"
-# ip6_service: "https://ident.me"
-# ip6_service: "https://myexternalip.com/raw"
+# Or use a local network interface instead:
+# interface6: "eth0"
 
 skip_update_on_startup: true  # If true, no provider updates will be performed on container start if the IP has not changed.
 # If false or not set, an update will always be performed on startup, even if the IP is the same.
