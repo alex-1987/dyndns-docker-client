@@ -8,6 +8,9 @@ from notify import send_notifications
 import socket
 import subprocess
 import re
+import fcntl
+import struct
+import array
 
 config = None  # global, so update_provider can access it
 
@@ -438,19 +441,37 @@ def update_provider(provider, ip, ip6=None, log_success_if_nochg=True, old_ip=No
 
 def get_interface_ipv4(interface_name):
     """
-    Gets the IPv4 address from the specified network interface.
-    Uses standard Python libraries instead of netifaces.
+    Gets the IPv4 address from the specified network interface using Python standard library.
+    No external commands required.
     """
     try:
-        # For Linux/Unix systems
-        output = subprocess.check_output(["ip", "-4", "addr", "show", interface_name]).decode('utf-8')
-        match = re.search(r'inet\s+(\d+\.\d+\.\d+\.\d+)', output)
-        if match:
-            ip = match.group(1)
+        # Try using socket library directly (works on Linux)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # 0x8915 is SIOCGIFADDR in Linux
+        ifreq = struct.pack('256s', interface_name[:15].encode('utf-8'))
+        try:
+            info = fcntl.ioctl(sock.fileno(), 0x8915, ifreq)
+            ip = socket.inet_ntoa(info[20:24])
             if validate_ipv4(ip):
                 log(f"Found IPv4 address {ip} on interface '{interface_name}'", "INFO", section="INTERFACE")
                 return ip
+        except OSError:
+            pass  # Fall through to alternative method
         
+        # Alternative method: Check all interfaces
+        for addr_info in socket.getaddrinfo(socket.gethostname(), None):
+            if addr_info[0] == socket.AF_INET:  # IPv4
+                ip = addr_info[4][0]
+                if validate_ipv4(ip) and ip != '127.0.0.1':
+                    # Try to verify this belongs to our interface
+                    try:
+                        with open(f"/sys/class/net/{interface_name}/address") as f:
+                            # Interface exists
+                            log(f"Found IPv4 address {ip} that might be on interface '{interface_name}'", "INFO", section="INTERFACE")
+                            return ip
+                    except:
+                        pass
+
         log(f"No IPv4 address found for interface '{interface_name}'", "WARNING", section="INTERFACE")
         return None
     except Exception as e:
@@ -459,19 +480,32 @@ def get_interface_ipv4(interface_name):
 
 def get_interface_ipv6(interface_name):
     """
-    Gets the IPv6 address from the specified network interface.
-    Uses standard Python libraries instead of netifaces.
+    Gets the IPv6 address from the specified network interface using Python standard library.
+    No external commands required.
     """
     try:
-        # For Linux/Unix systems
-        output = subprocess.check_output(["ip", "-6", "addr", "show", interface_name]).decode('utf-8')
-        # Look for global IPv6 addresses (not link-local fe80)
-        matches = re.findall(r'inet6\s+([a-f0-9:]+)/\d+\s+scope\s+global', output)
-        
-        if matches:
-            for ip in matches:
+        # Check if interface exists
+        try:
+            with open(f"/sys/class/net/{interface_name}/address"):
+                pass  # Interface exists
+        except FileNotFoundError:
+            log(f"Interface '{interface_name}' not found", "ERROR", section="INTERFACE")
+            return None
+            
+        # Get all IPv6 addresses
+        for addr_info in socket.getaddrinfo(socket.gethostname(), None):
+            if addr_info[0] == socket.AF_INET6:  # IPv6
+                ip = addr_info[4][0]
+                # Remove scope ID if present
+                if '%' in ip:
+                    ip = ip.split('%')[0]
+                
+                # Skip link-local addresses
+                if ip.startswith('fe80:'):
+                    continue
+                    
                 if validate_ipv6(ip):
-                    log(f"Found IPv6 address {ip} on interface '{interface_name}'", "INFO", section="INTERFACE")
+                    log(f"Found IPv6 address {ip} that might be on interface '{interface_name}'", "INFO", section="INTERFACE")
                     return ip
         
         log(f"No valid public IPv6 address found on interface '{interface_name}'", "WARNING", section="INTERFACE")
@@ -498,8 +532,17 @@ def validate_ipv4(ip):
 def validate_ipv6(ip):
     """
     Validates if the given string is a valid IPv6 address.
+    More strict checking to prevent IPv4 addresses being accepted.
     """
     try:
+        # Quick check: IPv6 address must contain at least one colon
+        if ':' not in ip:
+            return False
+            
+        # If it contains a dot, it might be an IPv4-mapped IPv6 address
+        if '.' in ip and not ip.startswith('::ffff:'):
+            return False
+            
         socket.inet_pton(socket.AF_INET6, ip)
         return True
     except:
