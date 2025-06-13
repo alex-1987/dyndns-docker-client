@@ -147,6 +147,28 @@ providers:
     token: "your_token"
     host: "yourhost.example.com"
 
+  # OVH DynHost example
+  - name: my-ovh-domain
+    protocol: dyndns2
+    url: "https://www.ovh.com/nic/update"
+    auth_method: "basic"
+    username: "your-dynhost-username"
+    password: "your-dynhost-password"
+    hostname: "dynamic.yourdomain.com"
+    extra_params:
+      system: "dyndns"
+
+  # Other examples with extra params
+  - name: example-with-extras
+    protocol: dyndns2
+    url: "https://example.com/nic/update"
+    username: "username"
+    password: "password"
+    hostname: "host.example.com"
+    extra_params:
+      param1: "value1"
+      param2: "value2"
+
 ## Network Interface Configuration
 
 This application supports retrieving IP addresses from local network interfaces instead of using external services. This can be useful when:

@@ -222,61 +222,78 @@ def update_ipv64(provider, ip, ip6=None):
 
 def update_dyndns2(provider, ip, ip6=None):
     """
-    Updates a DynDNS2-compatible provider (e.g. DuckDNS, NoIP, Dynu).
-    Supports IPv4 and IPv6.
-    Returns "updated", "nochg" or False.
+    Updates a DynDNS2-compatible service.
+    Returns "updated", "nochg", or None on error.
+    Now supports extra_params for services like OVH.
     """
-    url = provider['url']
-    params = {}
-    if 'hostname' in provider:
-        params['hostname'] = provider['hostname']
-    elif 'domain' in provider:
-        params['domain'] = provider['domain']
-    elif 'host' in provider:
-        params['host'] = provider['host']
-    if ip:
-        params['myip'] = ip
-    if ip6:
-        params['myipv6'] = ip6
-
-    auth = None
-    headers = {}
-    auth_method = provider.get('auth_method', 'token')
-    token = provider.get('token')
-    username = provider.get('username')
-    password = provider.get('password')
-
-    if auth_method == "basic":
-        auth = (username or token, password or token or "x")
-    elif auth_method == "bearer":
-        headers['Authorization'] = f"Bearer {token}"
-    else:
-        if 'key' in provider:
-            params['key'] = provider['key']
-        elif 'user' in provider:
-            params['user'] = provider['user']
-        elif 'token' in provider:
-            params['token'] = provider['token']
+    try:
+        # Prepare URL and auth
+        url = provider.get("url")
+        params = {}
+        
+        # Determine hostname parameter (some providers use different names)
+        hostname_param = None
+        if "hostname" in provider:
+            hostname_param = provider["hostname"]
+        elif "domain" in provider:
+            hostname_param = provider["domain"]
+        elif "host" in provider:
+            hostname_param = provider["host"]
+            
+        if not hostname_param:
+            log(f"No hostname/domain/host specified in provider {provider.get('name')}", "ERROR", section="DYNDNS2")
+            return None
+            
+        # Set basic parameters
+        params["hostname"] = hostname_param
+        if ip:
+            params["myip"] = ip
+        if ip6:
+            params["myipv6"] = ip6
+            
+        # Add extra parameters (new feature)
+        if "extra_params" in provider and isinstance(provider["extra_params"], dict):
+            extra_params = provider["extra_params"]
+            for key, value in extra_params.items():
+                params[key] = value
+                
+        # Authentication
+        auth = None
+        headers = {}
+        auth_method = provider.get("auth_method", "token")
+        
+        if auth_method == "token" and "token" in provider:
+            params["hostname"] = f"{hostname_param}"
+            params["token"] = provider["token"]
+        elif auth_method == "basic" and "username" in provider and "password" in provider:
+            auth = (provider["username"], provider["password"])
+        elif auth_method == "bearer" and "token" in provider:
+            headers["Authorization"] = f"Bearer {provider['token']}"
         else:
-            params['key'] = token
-
-    response = requests.get(url, params=params, auth=auth, headers=headers)
-    provider_name = provider.get('name', 'dyndns2')
-    log(f"[{provider_name}] response: {response.text}", section="DYNDNS2")
-
-    resp_text = response.text.lower().strip()
-    if "nochg" in resp_text:
-        log(f"[{provider_name}] No update needed (nochg).", "INFO", section="DYNDNS2")
-        return "nochg"
-    elif any(success in resp_text for success in ["good", "success"]):
-        return "updated"
-    else:
-        log(
-            f"[{provider_name}] DynDNS2 update failed: {response.text}",
-            "ERROR",
-            section="DYNDNS2"
-        )
-        return False
+            log(f"Invalid or incomplete auth configuration in provider {provider.get('name')}", "ERROR", section="DYNDNS2")
+            return None
+            
+        # Make the request
+        response = requests.get(url, params=params, auth=auth, headers=headers, timeout=10)
+        response_text = response.text.strip()
+        
+        # Log the response for debugging
+        provider_name = provider.get("name", "unknown")
+        log(f"[{provider_name}] response: {response_text}", "INFO", section="DYNDNS2")
+        
+        # Check for success or no change
+        if "good" in response_text or "updated" in response_text or "update succeed" in response_text or "success" in response_text:
+            return "updated"
+        elif "nochg" in response_text or "nochange" in response_text:
+            log(f"[{provider_name}] No update needed (nochg).", "INFO", section="DYNDNS2")
+            return "nochg"
+        else:
+            log(f"[{provider_name}] update failed: {response_text}", "ERROR", section="DYNDNS2")
+            return None
+            
+    except Exception as e:
+        log(f"Error in DynDNS2 update: {e}", "ERROR", section="DYNDNS2")
+        return None
 
 def validate_config(config):
     """
