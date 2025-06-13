@@ -5,8 +5,9 @@ import requests
 import yaml
 import logging
 from notify import send_notifications
-import netifaces
-import ipaddress
+import socket
+import subprocess
+import re
 
 config = None  # global, so update_provider can access it
 
@@ -422,24 +423,19 @@ def update_provider(provider, ip, ip6=None, log_success_if_nochg=True, old_ip=No
 def get_interface_ipv4(interface_name):
     """
     Gets the IPv4 address from the specified network interface.
-    Returns None if the interface doesn't exist or has no IPv4 address.
+    Uses standard Python libraries instead of netifaces.
     """
     try:
-        if interface_name not in netifaces.interfaces():
-            log(f"Interface '{interface_name}' not found", "ERROR", section="INTERFACE")
-            return None
-            
-        addrs = netifaces.ifaddresses(interface_name)
-        if netifaces.AF_INET not in addrs:
-            log(f"No IPv4 address found for interface '{interface_name}'", "ERROR", section="INTERFACE")
-            return None
-            
-        for addr in addrs[netifaces.AF_INET]:
-            ip = addr.get('addr')
-            if ip and validate_ipv4(ip):
+        # For Linux/Unix systems
+        output = subprocess.check_output(["ip", "-4", "addr", "show", interface_name]).decode('utf-8')
+        match = re.search(r'inet\s+(\d+\.\d+\.\d+\.\d+)', output)
+        if match:
+            ip = match.group(1)
+            if validate_ipv4(ip):
                 log(f"Found IPv4 address {ip} on interface '{interface_name}'", "INFO", section="INTERFACE")
                 return ip
-                
+        
+        log(f"No IPv4 address found for interface '{interface_name}'", "WARNING", section="INTERFACE")
         return None
     except Exception as e:
         log(f"Error getting IPv4 address from interface '{interface_name}': {e}", "ERROR", section="INTERFACE")
@@ -448,29 +444,20 @@ def get_interface_ipv4(interface_name):
 def get_interface_ipv6(interface_name):
     """
     Gets the IPv6 address from the specified network interface.
-    Returns None if the interface doesn't exist or has no IPv6 address.
-    Filters out link-local addresses (starting with fe80).
+    Uses standard Python libraries instead of netifaces.
     """
     try:
-        if interface_name not in netifaces.interfaces():
-            log(f"Interface '{interface_name}' not found", "ERROR", section="INTERFACE")
-            return None
-            
-        addrs = netifaces.ifaddresses(interface_name)
-        if netifaces.AF_INET6 not in addrs:
-            log(f"No IPv6 address found for interface '{interface_name}'", "ERROR", section="INTERFACE")
-            return None
-            
-        for addr in addrs[netifaces.AF_INET6]:
-            ip = addr.get('addr')
-            # Remove scope ID if present (e.g., %eth0)
-            if ip and '%' in ip:
-                ip = ip.split('%')[0]
-                
-            if ip and validate_ipv6(ip) and not ip.startswith('fe80'):
-                log(f"Found IPv6 address {ip} on interface '{interface_name}'", "INFO", section="INTERFACE")
-                return ip
-                
+        # For Linux/Unix systems
+        output = subprocess.check_output(["ip", "-6", "addr", "show", interface_name]).decode('utf-8')
+        # Look for global IPv6 addresses (not link-local fe80)
+        matches = re.findall(r'inet6\s+([a-f0-9:]+)/\d+\s+scope\s+global', output)
+        
+        if matches:
+            for ip in matches:
+                if validate_ipv6(ip):
+                    log(f"Found IPv6 address {ip} on interface '{interface_name}'", "INFO", section="INTERFACE")
+                    return ip
+        
         log(f"No valid public IPv6 address found on interface '{interface_name}'", "WARNING", section="INTERFACE")
         return None
     except Exception as e:
@@ -482,10 +469,14 @@ def validate_ipv4(ip):
     Validates if the given string is a valid IPv4 address.
     """
     try:
-        # Use ipaddress module to validate
-        ipaddress.IPv4Address(ip)
+        parts = ip.split('.')
+        if len(parts) != 4:
+            return False
+        for part in parts:
+            if not part.isdigit() or int(part) < 0 or int(part) > 255:
+                return False
         return True
-    except ValueError:
+    except:
         return False
 
 def validate_ipv6(ip):
@@ -493,10 +484,9 @@ def validate_ipv6(ip):
     Validates if the given string is a valid IPv6 address.
     """
     try:
-        # Use ipaddress module to validate
-        ipaddress.IPv6Address(ip)
+        socket.inet_pton(socket.AF_INET6, ip)
         return True
-    except ValueError:
+    except:
         return False
 
 def main():
