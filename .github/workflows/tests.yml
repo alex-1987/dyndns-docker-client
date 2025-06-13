@@ -12,8 +12,18 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install pytest pytest-mock pytest-cov  # Explizit die Test-Packages installieren
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f test-requirements.txt ]; then pip install -r test-requirements.txt; fi
       - name: Test with pytest
         run: |
-          pytest tests/
+          # Prüfe, ob der Testordner existiert
+          ls -la
+          # Falls pytest nicht im PATH ist, den vollen Pfad verwenden
+          python -m pytest tests/
+      - name: Debug environment
+        run: |
+          which python
+          python --version
+          pip list
+          find . -name "*.py" | sort
