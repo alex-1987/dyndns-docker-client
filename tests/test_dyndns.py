@@ -191,11 +191,16 @@ class TestConfiguration:
             assert update_dyndns.validate_config(valid_config) is True
     
     def test_validate_invalid_config(self):
-        # Missing required field
+        # Diese Konfiguration sollte definitiv ungültig sein
         invalid_config = {
             "timer": 300,
-            # Missing ip_service
-            "providers": []  # Empty providers list
+            "providers": [
+                {
+                    "name": "invalid_provider",
+                    # Fehlendes erforderliches "protocol" Feld
+                    "url": "https://example.com/update"
+                }
+            ]
         }
         
         with patch('update_dyndns.log'):
