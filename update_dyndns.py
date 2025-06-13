@@ -441,9 +441,9 @@ def update_provider(provider, ip, ip6=None, log_success_if_nochg=True, old_ip=No
 
 def get_interface_ipv4(interface_name):
     """
-    Gets the IPv4 address from the specified network interface using Python standard library.
-    No external commands required.
+    Gets the IPv4 address from the specified network interface.
     """
+    log(f"Attempting to get IPv4 from interface '{interface_name}'", "DEBUG", section="INTERFACE")
     try:
         # Try using socket library directly (works on Linux)
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
