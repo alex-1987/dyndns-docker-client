@@ -211,9 +211,18 @@ def test_send_notifications_with_no_config():
     # Sollte ohne Fehler beendet werden
     with patch('notify.logging.getLogger'):
         notify.send_notifications(None, "ERROR", "Test message")
-        # Kein assert nötig, Test passt wenn keine Exception geworfen wird
+        # No assertion needed - test passes if no exception is thrown
 
 # Für update_provider Tests sicherstellen, dass config vorhanden ist
 @patch('update_dyndns.config', {'notify': {'email': {'enabled': True}}})
 def test_update_provider_error_handling():
-    # Rest des Tests...
+    provider = {
+        "name": "test_provider",
+        "protocol": "dyndns2",
+        "url": "https://example.com/update",
+        "hostname": "test.example.com"
+    }
+    
+    with patch('update_dyndns.log'), patch('update_dyndns.update_dyndns2', return_value=None):
+        result = update_dyndns.update_provider(provider, "192.168.1.1")
+        assert result is False  # Update should fail
