@@ -156,9 +156,16 @@ def reset_all_cooldowns():
 
 def send_notifications(config, level, message, subject=None, service_name=None):
     """
-    Main function to send notifications to all enabled services,
-    respecting per-service cooldowns and logging the result.
+    Sends notifications to all enabled notification services that 
+    accept the given notification level.
     """
+    # Check if configuration exists
+    if not config:
+        # No notifications configured, simply return
+        return
+        
+    reset_cooldown = config.get("reset_cooldown_on_start", False)
+    
     # Cooldown reset on container start
     if config.get("reset_cooldown_on_start"):
         reset_all_cooldowns()

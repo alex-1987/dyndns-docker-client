@@ -205,3 +205,15 @@ class TestConfiguration:
         
         with patch('update_dyndns.log'):
             assert update_dyndns.validate_config(invalid_config) is False
+
+# Test für den Fall, dass keine Benachrichtigungskonfiguration vorhanden ist
+def test_send_notifications_with_no_config():
+    # Sollte ohne Fehler beendet werden
+    with patch('notify.logging.getLogger'):
+        notify.send_notifications(None, "ERROR", "Test message")
+        # Kein assert nötig, Test passt wenn keine Exception geworfen wird
+
+# Für update_provider Tests sicherstellen, dass config vorhanden ist
+@patch('update_dyndns.config', {'notify': {'email': {'enabled': True}}})
+def test_update_provider_error_handling():
+    # Rest des Tests...

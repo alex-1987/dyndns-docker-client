@@ -444,17 +444,21 @@ def update_provider(provider, ip, ip6=None, log_success_if_nochg=True, old_ip=No
             return result == "updated" or (log_success_if_nochg and result == "nochg")
     except Exception as e:
         provider_name = provider.get("name", "PROVIDER")
-        protocol = provider.get("protocol", "unknown")
-        error_msg = f"Update for provider '{provider_name}' ({protocol}) failed: {e}"
+        error_msg = f"Update for provider '{provider_name}' failed: {e}"
         log(error_msg, "ERROR", section=provider_name.upper())
-        send_notifications(
-            config.get("notify"),
-            "ERROR",
-            error_msg,
-            subject=f"DynDNS Error: {provider_name}",
-            service_name=provider_name
-        )
-        return False
+        
+        # Check if notify is configured before using it
+        notify_config = config.get("notify") if config else None
+        if notify_config:
+            send_notifications(
+                notify_config,
+                "ERROR",
+                error_msg,
+                subject=f"DynDNS Error: {provider_name}",
+                service_name=provider_name
+            )
+            
+        return
 
 def get_interface_ipv4(interface_name):
     """
