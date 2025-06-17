@@ -11,34 +11,120 @@ import re
 import fcntl
 import struct
 import array
+from logging.handlers import RotatingFileHandler
+import datetime
 
 config = None  # global, so update_provider can access it
 
-def setup_logging(level_str):
-    level = getattr(logging, level_str.upper(), logging.INFO)
-    root = logging.getLogger()
-    for handler in root.handlers[:]:
-        root.removeHandler(handler)
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(logging.Formatter('[%(levelname)s] %(name)s --> %(message)s'))
-    root.addHandler(handler)
-    root.setLevel(level)
+def setup_logging(loglevel, config=None):
+    """
+    Configures logging with the specified level.
+    Enhanced to support file logging if configured.
+    
+    Args:
+        loglevel: Log level as string (e.g. "INFO", "DEBUG")
+        config: Optional configuration dictionary for file logging
+    """
+    # Set up basic console logging as before
+    global log_level
+    log_level = loglevel
+    
+    # Check if we should add file logging
+    log_config = config.get("logging", {}) if config else {}
+    file_logging_enabled = log_config.get("enabled", False)
+    
+    # If Python logging should be used
+    if file_logging_enabled:
+        # Configure Python's logging system
+        log_level_enum = getattr(logging, loglevel)
+        logger = logging.getLogger()
+        logger.setLevel(log_level_enum)
+        
+        # Clear existing handlers to avoid duplicates
+        logger.handlers = []
+        
+        # Console handler - maintain the original logging format
+        console = logging.StreamHandler()
+        console.setLevel(log_level_enum)
+        console_format = logging.Formatter('[%(levelname)s] %(name)s --> %(message)s')
+        console.setFormatter(console_format)
+        logger.addHandler(console)
+        
+        # Add file handler with rotation
+        try:
+            log_file = log_config.get("file", "/var/log/dyndns/dyndns.log")
+            max_size = log_config.get("max_size_mb", 10) * 1024 * 1024  # Convert MB to bytes
+            backup_count = log_config.get("backup_count", 3)
+            
+            # Ensure log directory exists
+            os.makedirs(os.path.dirname(log_file), exist_ok=True)
+            
+            file_handler = RotatingFileHandler(
+                log_file, 
+                maxBytes=max_size,
+                backupCount=backup_count
+            )
+            file_format = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s --> %(message)s')
+            file_handler.setFormatter(file_format)
+            file_handler.setLevel(log_level_enum)
+            logger.addHandler(file_handler)
+            
+            # Log using Python's logger
+            logging.info(f"Log file enabled: {log_file} (max size: {max_size/1024/1024:.1f}MB, backups: {backup_count})")
+            
+            # Set global flag to use Python's logging
+            global use_python_logging
+            use_python_logging = True
+        except Exception as e:
+            # Fallback to console logging if file setup fails
+            print(f"Failed to setup log file: {e}")
+    
+    return loglevel
 
-def log(msg, level="INFO", section="MAIN"):
-    logger = logging.getLogger(section)
-    level = level.upper()
-    if level == "DEBUG":
-        logger.debug(msg)
-    elif level == "INFO":
-        logger.info(msg)
-    elif level == "WARNING":
-        logger.warning(msg)
-    elif level == "ERROR":
-        logger.error(msg)
-    elif level == "CRITICAL":
-        logger.critical(msg)
+# Global variables
+log_level = "INFO"
+use_python_logging = False
+
+def log(message, level="INFO", section="MAIN"):
+    """
+    Log a message with the specified level and section.
+    Uses Python's logging if enabled, otherwise falls back to print.
+    """
+    global use_python_logging, log_level
+    
+    if use_python_logging:
+        # Use Python's logging system
+        logger = logging.getLogger(section)
+        log_method = getattr(logger, level.lower(), logger.info)
+        log_method(message)
     else:
-        logger.info(msg)
+        # Original print-based logging
+        if should_log(level, log_level):
+            timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            print(f"{timestamp} [{level}] {section} --> {message}")
+
+def should_log(level, configured_level):
+    """
+    Determine if a message should be logged based on its level and the configured level.
+    This replicates your existing logic for log filtering.
+    """
+    levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+    try:
+        message_idx = levels.index(level)
+        config_idx = levels.index(configured_level)
+        return message_idx >= config_idx
+    except ValueError:
+        return True  # If level not recognized, log it anyway
+
+# Call this function in main() after loading the config
+def initialize_logging(config):
+    """Initialize the logging system based on configuration."""
+    global _use_python_logging
+    
+    if config and "logging" in config and config["logging"].get("enabled", False):
+        setup_logging(config)
+        _use_python_logging = True
+    # Otherwise, stick with the default print-based logging
 
 def get_public_ip(ip_service):
     """
@@ -583,6 +669,7 @@ def main():
             "CRITICAL"
         )
         sys.exit(1)
+    
     with open(config_path, 'r') as f:
         try:
             config = yaml.safe_load(f)
@@ -590,8 +677,11 @@ def main():
             setup_logging("INFO")
             log(f"Error loading config.yaml: {e}", "ERROR")
             sys.exit(1)
+    
     loglevel = config.get("loglevel", "INFO")
-    setup_logging(loglevel)
+    # Hier übergeben wir auch das config-Objekt, damit das Datei-Logging konfiguriert werden kann
+    setup_logging(loglevel, config)
+    
     last_config_mtime = os.path.getmtime(config_path)
     if not config or not isinstance(config, dict):
         log(
