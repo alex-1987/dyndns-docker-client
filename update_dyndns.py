@@ -29,14 +29,13 @@ def setup_logging(loglevel, config=None):
         loglevel: Log level as string (e.g. "INFO", "DEBUG")
         config: Optional configuration dictionary for file logging
     """
-    # Set up basic level
-    global log_level
+    global log_level, file_logger_instance
     log_level = loglevel
     
-    # Check if file logging is configured
-    if config and "logging" in config and config["logging"].get("enabled", True):
+    # Only setup file logging if explicitly enabled
+    if config and config.get("logging", {}).get("enabled", False):
         try:
-            log_config = config.get("logging", {})
+            log_config = config["logging"]
             log_file = log_config.get("file", "/var/log/dyndns/dyndns.log")
             max_size = log_config.get("max_size_mb", 10) * 1024 * 1024
             backup_count = log_config.get("backup_count", 3)
@@ -45,63 +44,51 @@ def setup_logging(loglevel, config=None):
             os.makedirs(os.path.dirname(log_file), exist_ok=True)
             
             # Setup file handler
-            file_handler = RotatingFileHandler(
-                log_file, 
-                maxBytes=max_size,
-                backupCount=backup_count
-            )
-            
-            # Format
-            formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s --> %(message)s')
+            file_handler = RotatingFileHandler(log_file, maxBytes=max_size, backupCount=backup_count)
+            formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
             file_handler.setFormatter(formatter)
             
-            # Create a separate logger just for file logging
-            # This won't interfere with console output
-            file_logger = logging.getLogger("file_logger")
-            file_logger.setLevel(getattr(logging, loglevel))
-            file_logger.addHandler(file_handler)
-            file_logger.propagate = False  # Don't pass to root logger
+            # Create file logger
+            file_logger_instance = logging.getLogger("dyndns_file")
+            file_logger_instance.setLevel(getattr(logging, loglevel))
+            file_logger_instance.handlers = []  # Clear any existing handlers
+            file_logger_instance.addHandler(file_handler)
+            file_logger_instance.propagate = False
             
-            # Log initial message to file
-            start_msg = f"Log file enabled: {log_file} (max size: {max_size/1024/1024:.1f}MB, backups: {backup_count})"
-            file_logger.info(start_msg)
-            print(f"{datetime.datetime.now(datetime.timezone.utc).isoformat()} [INFO] LOGGING --> {start_msg}")
-            
-            # Store the logger for later use
-            global file_logger_instance
-            file_logger_instance = file_logger
+            print(f"{datetime.datetime.now(datetime.timezone.utc).isoformat()} [INFO] LOGGING --> File logging enabled: {log_file}")
             
         except Exception as e:
-            print(f"{datetime.datetime.now(datetime.timezone.utc).isoformat()} [ERROR] LOGGING --> Failed to setup log file: {e}")
-    
-    return loglevel
+            print(f"{datetime.datetime.now(datetime.timezone.utc).isoformat()} [ERROR] LOGGING --> Failed to setup file logging: {e}")
+            file_logger_instance = None
 
 def log(message, level="INFO", section="MAIN"):
     """
     Log a message with the specified level and section.
-    Always logs to console, additionally logs to file if configured.
+    This is the ORIGINAL log function with optional file logging added.
     """
     global log_level, file_logger_instance
     
-    # Log levels for filtering
+    # Original console logging logic - EXACTLY as before
     levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+    
     try:
-        message_idx = levels.index(level)
-        config_idx = levels.index(log_level)
-        should_log = message_idx >= config_idx
+        message_level_index = levels.index(level)
+        config_level_index = levels.index(log_level)
+        should_log = message_level_index >= config_level_index
     except ValueError:
         should_log = True
     
-    # Always log to console if level permits
     if should_log:
+        # Original timestamp and print format
         timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        print(f"{timestamp} [{level}] {section} --> {message}")
-    
-    # Additionally log to file if configured
-    if file_logger_instance is not None and should_log:
-        logger = file_logger_instance
-        log_method = getattr(logger, level.lower(), logger.info)
-        log_method(f"{section} --> {message}")
+        console_message = f"{timestamp} [{level}] {section} --> {message}"
+        print(console_message)
+        
+        # Additionally log to file if enabled
+        if file_logger_instance:
+            file_message = f"{section} --> {message}"
+            log_method = getattr(file_logger_instance, level.lower(), file_logger_instance.info)
+            log_method(file_message)
 
 def should_log(level, configured_level):
     """
