@@ -9,7 +9,6 @@ from unittest.mock import patch, MagicMock, mock_open
 import update_dyndns
 import notify
 
-print("DYNDNS CLIENT STARTUP")
 
 # Tests for IP-related functions
 class TestIPFunctions:

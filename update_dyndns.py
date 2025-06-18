@@ -14,7 +14,11 @@ import array
 from logging.handlers import RotatingFileHandler
 import datetime
 
+print("DYNDNS CLIENT STARTUP")
+
+
 config = None  # global, so update_provider can access it
+
 
 # Global variables
 log_level = "INFO"
