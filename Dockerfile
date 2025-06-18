@@ -14,4 +14,4 @@ COPY config.example.yaml /app/config.example.yaml
 RUN mkdir -p /app/config
 
 # Standard-Startbefehl
-CMD ["python", "/app/update_dyndns.py"]
+CMD ["python", "-u", "/app/update_dyndns.py"]
