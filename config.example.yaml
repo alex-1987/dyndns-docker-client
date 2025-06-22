@@ -7,12 +7,12 @@ timer: 300
 # Logging level
 loglevel: INFO   # Possible values: DEBUG, INFO, WARNING, ERROR, CRITICAL
 
-# Logging configuration (optional)
-# logging:
-#   enabled: false                 # Set to true to enable file logging
-#   file: "/var/log/dyndns/dyndns.log"  # Log file path (directory will be created if needed)
-#   max_size_mb: 10                # Maximum size in MB before rotation
-#   backup_count: 3                # Number of backup files to keep
+#Logging configuration (optional)
+logging:
+  enabled: true                 # Set to true to enable file logging
+  file: "/var/log/dyndns/dyndns.log"  # Log file path (directory will be created if needed)
+  max_size_mb: 10                # Maximum size in MB before rotation
+  backup_count: 3                # Number of backup files to keep
 
 
 # Service to fetch the public IPv4 address
