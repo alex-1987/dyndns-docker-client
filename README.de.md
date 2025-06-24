@@ -8,7 +8,7 @@
 
 1. [Überblick](#überblick)
 2. [Features](#features)
-3. [Loglevel](#loglevel)
+3. [Loglevel & Consolelevel](#loglevel--consolelevel)
 4. [Schnellstart (Docker & Compose)](#schnellstart-docker--compose)
 5. [Konfiguration](#konfiguration-configconfigyaml)
    - [Grundlegende Optionen](#grundlegende-optionen)
@@ -27,6 +27,8 @@
 Dieses Projekt ist ein flexibler DynDNS-Client für verschiedene Provider (z.B. Cloudflare, ipv64, DuckDNS, NoIP, Dynu) und läuft als Docker-Container.  
 Es unterstützt IPv4 und optional IPv6, prüft regelmäßig die öffentliche IP und aktualisiert die DNS-Einträge bei den konfigurierten Diensten.
 
+**Funktionsweise:** Der Client prüft alle `timer` Sekunden (Standard: 300) die öffentliche IP-Adresse. Hat sich die IP seit dem letzten Check geändert, werden alle konfigurierten Provider aktualisiert. Ist die IP gleich geblieben, wird kein Update gesendet (außer du hast es anders konfiguriert). Alle Aktionen, Fehler und Benachrichtigungen werden geloggt.
+
 ---
 
 ## Features
@@ -41,20 +43,45 @@ Es unterstützt IPv4 und optional IPv6, prüft regelmäßig die öffentliche IP 
 
 ---
 
-## Loglevel
+## Loglevel & Consolelevel
 
-Der Loglevel steuert die Ausführlichkeit der Ausgaben der Anwendung.  
-Setze die Option `loglevel` in deiner `config.yaml` auf einen der folgenden Werte:
+Der Loglevel steuert die **Ausführlichkeit der Protokollierung** (Datei und/oder Konsole). Es gibt zwei Stufen:
+- `loglevel`: Steuert, was ins Logfile geschrieben wird (wenn Dateilogs aktiviert sind)
+- `consolelevel`: Steuert, was auf der Konsole (stdout) ausgegeben wird
 
-- `CRITICAL`: Nur kritische Fehler werden protokolliert.
-- `ERROR`: Fehler und kritische Probleme werden protokolliert.
-- `WARNING`: Warnungen, Fehler und kritische Probleme werden protokolliert.
-- `INFO`: Informationsmeldungen, Warnungen, Fehler und kritische Probleme werden protokolliert (Standard).
-- `DEBUG`: Detaillierte Debug-Informationen sowie alle obigen Stufen.
+Setze diese Optionen in deiner `config.yaml`:
 
-Beispiel:
+```yaml
+loglevel: "INFO"        # Logfile-Level (bei aktiviertem Dateilog)
+consolelevel: "INFO"    # Konsolen-Level (Standard: wie loglevel)
+```
+
+**Was ist auf welcher Stufe enthalten?**
+- `CRITICAL`: Nur fatale Fehler, die das Programm beenden (z.B. fehlende Config, nicht behebbarer Fehler)
+- `ERROR`: Alle Fehler, inkl. fehlgeschlagene Provider-Updates, ungültige IPs, Benachrichtigungsfehler, Config-Fehler
+- `WARNING`: Warnungen zu nicht-fatalen Problemen (z.B. Provider konnte nicht aktualisiert werden, keine gültige IP gefunden, Fallback genutzt)
+- `INFO`: Alle erfolgreichen Update-Versuche, übersprungene Updates (IP unverändert), Config-Reloads, Benachrichtigungen, und alles oben genannte
+- `DEBUG`: Detaillierte technische Infos, inkl. aller Requests/Responses, IP-Erkennungsschritte, Provider-Payloads, und alles oben genannte
+
+**Beispiele für Log-Einträge:**
+- Jeder IP-Check (alle `timer` Sekunden)
+- Jeder Provider-Update-Versuch (Erfolg, keine Änderung, Fehler)
+- Alle Fehler und Warnungen
+- Alle gesendeten Benachrichtigungen (und Fehler)
+- Alle Config-Reloads und Hot-Reload-Events
+- Alle Start- und Stopp-Ereignisse
+
+**Hinweis:**
+- Wenn du `consolelevel` nicht setzt, wird für die Konsole das gleiche Level wie für das Logfile verwendet.
+- Dateilogs müssen im Abschnitt `logging` der Config aktiviert werden, damit Logs in eine Datei geschrieben werden.
+
+Beispiel-Konfiguration:
 ```yaml
 loglevel: "INFO"
+consolelevel: "WARNING"
+logging:
+  enabled: true
+  file: "/var/log/dyndns/dyndns.log"
 ```
 
 ---
