@@ -53,7 +53,7 @@ Setze diese Optionen in deiner `config.yaml`:
 
 ```yaml
 loglevel: "INFO"        # Logfile-Level (bei aktiviertem Dateilog)
-consolelevel: "INFO"    # Konsolen-Level (Standard: wie loglevel)
+consolelevel: "INFO"    # Konsolen-Level (was im Terminal ausgegeben wird)
 ```
 
 **Was ist auf welcher Stufe enthalten?**

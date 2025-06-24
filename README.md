@@ -53,7 +53,7 @@ Set these options in your `config.yaml`:
 
 ```yaml
 loglevel: "INFO"        # File log level (if file logging is enabled)
-consolelevel: "INFO"    # Console log level (default: same as loglevel)
+consolelevel: "INFO"    # Console log level (what is printed to the terminal)
 ```
 
 **What is included at each level:**

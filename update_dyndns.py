@@ -19,9 +19,9 @@ print("DYNDNS CLIENT STARTUP")
 
 config = None  # global, so update_provider can access it
 
-
 # Global variables
-log_level = "INFO"
+log_level = "INFO"         # For file logging
+console_level = "INFO"     # For console output
 file_logger_instance = None
 
 def setup_logging(loglevel, config=None):
@@ -68,28 +68,30 @@ def setup_logging(loglevel, config=None):
 def log(message, level="INFO", section="MAIN"):
     """
     Log a message with the specified level and section.
-    This is the ORIGINAL log function with optional file logging added.
+    Console output is filtered by consolelevel, file output by loglevel.
     """
-    global log_level, file_logger_instance
-    
-    # Original console logging logic - EXACTLY as before
+    global log_level, console_level, file_logger_instance
     levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-    
+    # Console output
     try:
         message_level_index = levels.index(level)
-        config_level_index = levels.index(log_level)
-        should_log = message_level_index >= config_level_index
+        console_level_index = levels.index(console_level)
+        should_log_console = message_level_index >= console_level_index
     except ValueError:
-        should_log = True
-    
-    if should_log:
-        # Original timestamp and print format
+        should_log_console = True
+    if should_log_console:
         timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
         console_message = f"{timestamp} [{level}] {section} --> {message}"
         print(console_message)
-        
-        # Additionally log to file if enabled
-        if file_logger_instance:
+    # File output
+    if file_logger_instance:
+        try:
+            message_level_index = levels.index(level)
+            file_level_index = levels.index(log_level)
+            should_log_file = message_level_index >= file_level_index
+        except ValueError:
+            should_log_file = True
+        if should_log_file:
             file_message = f"{section} --> {message}"
             log_method = getattr(file_logger_instance, level.lower(), file_logger_instance.info)
             log_method(file_message)
@@ -647,7 +649,7 @@ def validate_ipv6(ip):
         return False
 
 def main():
-    global config
+    global config, log_level, console_level
     config_path = 'config/config.yaml'
     if not os.path.exists(config_path):
         setup_logging("INFO")
@@ -660,7 +662,6 @@ def main():
             "CRITICAL"
         )
         sys.exit(1)
-    
     with open(config_path, 'r') as f:
         try:
             config = yaml.safe_load(f)
@@ -668,9 +669,10 @@ def main():
             setup_logging("INFO")
             log(f"Error loading config.yaml: {e}", "ERROR")
             sys.exit(1)
-    
     loglevel = config.get("loglevel", "INFO")
-    # Hier übergeben wir auch das config-Objekt, damit das Datei-Logging konfiguriert werden kann
+    consolelevel = config.get("consolelevel", loglevel)
+    log_level = loglevel
+    console_level = consolelevel
     setup_logging(loglevel, config)
     
     last_config_mtime = os.path.getmtime(config_path)

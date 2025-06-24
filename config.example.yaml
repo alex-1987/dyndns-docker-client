@@ -4,10 +4,11 @@
 # Interval in seconds for IP checks (e.g. every 5 minutes)
 timer: 300
 
-# Logging level
-loglevel: INFO   # Possible values: DEBUG, INFO, WARNING, ERROR, CRITICAL
+# Logging levels
+loglevel: INFO        # File log level (if file logging is enabled). Possible values: DEBUG, INFO, WARNING, ERROR, CRITICAL
+consolelevel: INFO   # Console log level (what is printed to the terminal). Possible values: DEBUG, INFO, WARNING, ERROR, CRITICAL
 
-#Logging configuration (optional)
+# Logging configuration (optional)
 logging:
   enabled: true                 # Set to true to enable file logging
   file: "/var/log/dyndns/dyndns.log"  # Log file path (directory will be created if needed)
