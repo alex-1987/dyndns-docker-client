@@ -8,16 +8,17 @@
 
 1. [Overview](#overview)
 2. [Features](#features)
-3. [Quick Start (Docker & Compose)](#quick-start-docker--compose)
-4. [Configuration](#configuration-configconfigyaml)
+3. [Loglevel](#loglevel)
+4. [Quick Start (Docker & Compose)](#quick-start-docker--compose)
+5. [Configuration](#configuration-configconfigyaml)
    - [Basic Options](#basic-options)
    - [Provider Configuration](#provider-configuration)
    - [Notifications & Cooldown](#notifications--cooldown)
    - [Provider Update on Startup Only if IP Changed](#provider-update-on-startup-only-if-ip-changed)
-5. [Examples](#examples)
-6. [Error Handling & Tips](#error-handling--tips)
-7. [Contributing & Support](#contributing--support)
-8. [License](#license)
+6. [Examples](#examples)
+7. [Error Handling & Tips](#error-handling--tips)
+8. [Contributing & Support](#contributing--support)
+9. [License](#license)
 
 ---
 
@@ -37,6 +38,24 @@ It supports IPv4 and optionally IPv6, regularly checks the public IP, and update
 - **Detailed Logging:** Shows whether an update was performed, was not needed, or an error occurred.
 - **Notification Cooldown:** Each notification service can have its own cooldown to avoid spam.
 - **Provider Update on Startup Only if IP Changed:** Saves unnecessary requests and protects against rate limits.
+
+---
+
+## Loglevel
+
+The loglevel controls the verbosity of the application's output.  
+Set the `loglevel` option in your `config.yaml` to one of the following values:
+
+- `CRITICAL`: Only critical errors are logged.
+- `ERROR`: Errors and critical issues are logged.
+- `WARNING`: Warnings, errors, and critical issues are logged.
+- `INFO`: Informational messages, warnings, errors, and critical issues are logged (default).
+- `DEBUG`: Detailed debug information, including all of the above.
+
+Example:
+```yaml
+loglevel: "INFO"
+```
 
 ---
 

@@ -8,16 +8,17 @@
 
 1. [Überblick](#überblick)
 2. [Features](#features)
-3. [Schnellstart (Docker & Compose)](#schnellstart-docker--compose)
-4. [Konfiguration](#konfiguration-configconfigyaml)
+3. [Loglevel](#loglevel)
+4. [Schnellstart (Docker & Compose)](#schnellstart-docker--compose)
+5. [Konfiguration](#konfiguration-configconfigyaml)
    - [Grundlegende Optionen](#grundlegende-optionen)
    - [Provider-Konfiguration](#provider-konfiguration)
    - [Benachrichtigungen & Cooldown](#benachrichtigungen--cooldown)
    - [Provider-Update beim Neustart nur bei IP-Änderung](#provider-update-beim-neustart-nur-bei-ip-änderung)
-5. [Beispiele](#beispiele)
-6. [Fehlerbehandlung & Tipps](#fehlerbehandlung--tipps)
-7. [Mitmachen & Support](#mitmachen--support)
-8. [Lizenz](#lizenz)
+6. [Beispiele](#beispiele)
+7. [Fehlerbehandlung & Tipps](#fehlerbehandlung--tipps)
+8. [Mitmachen & Support](#mitmachen--support)
+9. [Lizenz](#lizenz)
 
 ---
 
@@ -37,6 +38,24 @@ Es unterstützt IPv4 und optional IPv6, prüft regelmäßig die öffentliche IP 
 - **Detailliertes Logging:** Zeigt an, ob ein Update durchgeführt wurde, nicht nötig war oder ein Fehler auftrat.
 - **Benachrichtigungs-Cooldown:** Jeder Dienst kann einen eigenen Cooldown für Benachrichtigungen erhalten.
 - **Provider-Update beim Neustart nur bei IP-Änderung:** Spart unnötige Requests und schützt vor Rate-Limits.
+
+---
+
+## Loglevel
+
+Der Loglevel steuert die Ausführlichkeit der Ausgaben der Anwendung.  
+Setze die Option `loglevel` in deiner `config.yaml` auf einen der folgenden Werte:
+
+- `CRITICAL`: Nur kritische Fehler werden protokolliert.
+- `ERROR`: Fehler und kritische Probleme werden protokolliert.
+- `WARNING`: Warnungen, Fehler und kritische Probleme werden protokolliert.
+- `INFO`: Informationsmeldungen, Warnungen, Fehler und kritische Probleme werden protokolliert (Standard).
+- `DEBUG`: Detaillierte Debug-Informationen sowie alle obigen Stufen.
+
+Beispiel:
+```yaml
+loglevel: "INFO"
+```
 
 ---
 
