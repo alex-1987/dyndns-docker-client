@@ -5,7 +5,7 @@
 timer: 300
 
 # Logging levels
-loglevel: INFO        # File log level (if file logging is enabled). Possible values: DEBUG, INFO, WARNING, ERROR, CRITICAL
+loglevel: WARNING        # File log level (if file logging is enabled). Possible values: DEBUG, INFO, WARNING, ERROR, CRITICAL
 consolelevel: INFO   # Console log level (what is printed to the terminal). Possible values: DEBUG, INFO, WARNING, ERROR, CRITICAL
 
 # Logging configuration (optional)
