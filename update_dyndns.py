@@ -16,7 +16,6 @@ import datetime
 
 print("DYNDNS CLIENT STARTUP")
 
-
 config = None  # global, so update_provider can access it
 
 # Global variables
@@ -24,17 +23,30 @@ log_level = "INFO"         # For file logging
 console_level = "INFO"     # For console output
 file_logger_instance = None
 
+# Add a custom loglevel for very verbose, routine messages
+CUSTOM_LEVELS = ["TRACE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+
+# Add custom TRACE loglevel (lower than DEBUG)
+TRACE_LEVEL_NUM = 5
+logging.addLevelName(TRACE_LEVEL_NUM, "TRACE")
+
+def trace(self, message, *args, **kws):
+    if self.isEnabledFor(TRACE_LEVEL_NUM):
+        self._log(TRACE_LEVEL_NUM, message, args, **kws)
+logging.Logger.trace = trace
+
 def setup_logging(loglevel, config=None):
     """
     Configures logging with the specified level.
     Enhanced to support file logging if configured.
+    Adds support for custom TRACE loglevel.
     
     Args:
-        loglevel: Log level as string (e.g. "INFO", "DEBUG")
+        loglevel: Log level as string (e.g. "INFO", "DEBUG", "TRACE")
         config: Optional configuration dictionary for file logging
     """
     global log_level, file_logger_instance
-    log_level = loglevel
+    log_level = loglevel.upper()
     
     # Only setup file logging if explicitly enabled
     if config and config.get("logging", {}).get("enabled", False):
@@ -54,7 +66,11 @@ def setup_logging(loglevel, config=None):
             
             # Create file logger
             file_logger_instance = logging.getLogger("dyndns_file")
-            file_logger_instance.setLevel(getattr(logging, loglevel))
+            # Support custom TRACE loglevel
+            if log_level == "TRACE":
+                file_logger_instance.setLevel(TRACE_LEVEL_NUM)
+            else:
+                file_logger_instance.setLevel(getattr(logging, log_level, logging.INFO))
             file_logger_instance.handlers = []  # Clear any existing handlers
             file_logger_instance.addHandler(file_handler)
             file_logger_instance.propagate = False
@@ -69,13 +85,16 @@ def log(message, level="INFO", section="MAIN"):
     """
     Log a message with the specified level and section.
     Console output is filtered by consolelevel, file output by loglevel.
+    Supports custom TRACE loglevel for routine/status messages.
     """
     global log_level, console_level, file_logger_instance
-    levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+    # Add TRACE to levels
+    levels = ["TRACE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+    level = level.upper()
     # Console output
     try:
         message_level_index = levels.index(level)
-        console_level_index = levels.index(console_level)
+        console_level_index = levels.index(console_level.upper())
         should_log_console = message_level_index >= console_level_index
     except ValueError:
         should_log_console = True
@@ -87,24 +106,29 @@ def log(message, level="INFO", section="MAIN"):
     if file_logger_instance:
         try:
             message_level_index = levels.index(level)
-            file_level_index = levels.index(log_level)
+            file_level_index = levels.index(log_level.upper())
             should_log_file = message_level_index >= file_level_index
         except ValueError:
             should_log_file = True
         if should_log_file:
             file_message = f"{section} --> {message}"
-            log_method = getattr(file_logger_instance, level.lower(), file_logger_instance.info)
-            log_method(file_message)
+            # Use custom trace method if TRACE
+            if level == "TRACE":
+                file_logger_instance.trace(file_message)
+            else:
+                log_method = getattr(file_logger_instance, level.lower(), file_logger_instance.info)
+                log_method(file_message)
 
 def should_log(level, configured_level):
     """
     Determine if a message should be logged based on its level and the configured level.
     This replicates your existing logic for log filtering.
+    Supports custom TRACE loglevel.
     """
-    levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+    levels = ["TRACE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
     try:
-        message_idx = levels.index(level)
-        config_idx = levels.index(configured_level)
+        message_idx = levels.index(level.upper())
+        config_idx = levels.index(configured_level.upper())
         return message_idx >= config_idx
     except ValueError:
         return True  # If level not recognized, log it anyway
@@ -713,7 +737,6 @@ def main():
         log(f"Using interface to determine IPv4: {ip_interface}", section="MAIN") 
     else:
         log("No method configured to determine IPv4", "WARNING", section="MAIN")
-        
     if ip6_service:
         log(f"Using service to determine IPv6: {ip6_service}", section="MAIN")
     elif ip6_interface:
@@ -758,7 +781,7 @@ def main():
     ip6_changed = (test_ip6 != last_ip6) if test_ip6 else False
 
     if skip_on_startup and not ip_changed and not ip6_changed:
-        log("IP has not changed since last run. No provider updates needed on startup.", "INFO", section="MAIN")
+        log("IP has not changed since last run. No provider updates needed on startup.", "TRACE", section="MAIN")
         # IPs trotzdem speichern, falls sie vorher noch nicht gespeichert waren
         save_last_ip("v4", test_ip)
         save_last_ip("v6", test_ip6)
@@ -782,7 +805,7 @@ def main():
     elapsed = 0
     check_interval = 2  # Seconds, how often to check for config changes
 
-    log(f"Next run in {timer} seconds...", section="MAIN")
+    log(f"Next run in {timer} seconds...", "TRACE", section="MAIN")
 
     while True:
         time.sleep(check_interval)
@@ -822,7 +845,7 @@ def main():
             last_ip = current_ip
             last_ip6 = current_ip6
             elapsed = 0
-            log(f"Next run in {timer} seconds...", section="MAIN")
+            log(f"Next run in {timer} seconds...", "TRACE", section="MAIN")
             continue
 
         # Timer-based update as usual
@@ -854,14 +877,14 @@ def main():
                 last_ip = current_ip
                 last_ip6 = current_ip6
                 elapsed = 0
-                log(f"Next run in {timer} seconds...", section="MAIN")
+                log(f"Next run in {timer} seconds...", "TRACE", section="MAIN")
             else:
                 if current_ip:
-                    log(f"IP unchanged ({current_ip}), no update needed.", section="MAIN")
+                    log(f"IP unchanged ({current_ip}), no update needed.", "TRACE", section="MAIN")
                 if current_ip6:
-                    log(f"IPv6 unchanged ({current_ip6}), no update needed.", section="MAIN")
+                    log(f"IPv6 unchanged ({current_ip6}), no update needed.", "TRACE", section="MAIN")
                 elapsed = 0
-                log(f"Next run in {timer} seconds...", section="MAIN")
+                log(f"Next run in {timer} seconds...", "TRACE", section="MAIN")
 
 if __name__ == "__main__":
     main()

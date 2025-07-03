@@ -60,8 +60,9 @@ consolelevel: "INFO"    # Console log level (what is printed to the terminal)
 - `CRITICAL`: Only fatal errors that cause the program to exit (e.g. missing config, unrecoverable errors)
 - `ERROR`: All errors, including failed provider updates, invalid IPs, notification failures, config errors
 - `WARNING`: Warnings about non-fatal issues (e.g. provider could not be updated, no valid IP found, fallback used)
-- `INFO`: All successful update attempts, skipped updates (IP unchanged), config reloads, notification sends, and all of the above
+- `INFO`: All successful update attempts, config reloads, notification sends, and all of the above
 - `DEBUG`: Detailed technical information, including all requests/responses, IP detection steps, provider payloads, and all of the above
+- `TRACE`: Routine and very verbose messages (e.g. "IP unchanged", "Next run in ... seconds"). Use this level if you want to see every check and loop, but be aware it will make the log file much larger.
 
 **Examples of what you see in the log:**
 - Every IP check (every `timer` seconds)
@@ -70,19 +71,33 @@ consolelevel: "INFO"    # Console log level (what is printed to the terminal)
 - All notifications sent (and failures)
 - All config reloads and hot-reload events
 - All startup and shutdown events
+- With `TRACE`: Also all routine status messages (e.g. "IP unchanged", "Next run in ...")
 
 **Note:**
 - If you do not set `consolelevel`, the console output will use the same level as `loglevel`.
 - File logging must be enabled in the `logging` section of your config to write logs to a file.
 
-Example config:
+### Loglevels Overview
+
+| Loglevel | Description |
+|----------|-------------|
+| TRACE    | Routine/status messages (e.g. "IP unchanged", "Next run in ..."). Only shown if TRACE is set. Use for regular status to avoid log bloat. |
+| DEBUG    | Debugging information, more detailed than INFO. |
+| INFO     | Normal operational messages. |
+| WARNING  | Warnings, something unexpected but not fatal. |
+| ERROR    | Errors that require attention. |
+| CRITICAL | Critical errors, program will exit. |
+
+### Example configuration for loglevel and consolelevel
+
 ```yaml
-loglevel: "INFO"
-consolelevel: "WARNING"
-logging:
-  enabled: true
-  file: "/var/log/dyndns/dyndns.log"
+loglevel: TRACE         # File loglevel: logs everything including routine messages
+consolelevel: INFO      # Console loglevel: only show important info and above
 ```
+
+- `loglevel` controls what is written to the log file (if file logging is enabled).
+- `consolelevel` controls what is printed to the console.
+- Set either to `TRACE` to see routine/status messages (e.g. "IP unchanged", "Next run in ...").
 
 ---
 

@@ -5,8 +5,24 @@
 timer: 300
 
 # Logging levels
-loglevel: WARNING        # File log level (if file logging is enabled). Possible values: DEBUG, INFO, WARNING, ERROR, CRITICAL
-consolelevel: INFO   # Console log level (what is printed to the terminal). Possible values: DEBUG, INFO, WARNING, ERROR, CRITICAL
+loglevel: INFO         # File loglevel: only log important info and above (INFO, WARNING, ERROR, CRITICAL)
+consolelevel: TRACE   # Console loglevel: show all messages, including routine/status (TRACE, DEBUG, INFO, ...)
+#
+# Explanation:
+# - With this setting, the log file will only contain important events (INFO and above),
+#   while the console will show all messages, including routine/status messages (e.g. "IP unchanged", "Next run in ...").
+# - Set loglevel to TRACE if you want to log everything to file as well.
+# - Set consolelevel to INFO or higher if you want less output on the console.
+# - Both options are independent.
+#
+# Loglevel options: TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL
+#
+# TRACE is for routine/status messages to avoid log bloat. Use only if you want to see every status message.
+#
+# Example:
+#   loglevel: INFO
+#   consolelevel: TRACE
+#   # This will log only important events to file, but show all messages on the console.
 
 # Logging configuration (optional)
 logging:
@@ -205,3 +221,17 @@ services:
 # - For cloudflare and ipv64, the URL is hardcoded in the code.
 # - Depending on the provider, the fields 'domain', 'hostname', or 'host' are required.
 # - auth_method can be "token", "basic", or "bearer" (depending on provider/API).
+#
+# Explanation:
+# - Set loglevel or consolelevel to TRACE to see routine/status messages (e.g. "IP unchanged", "Next run in ...").
+# - Set to INFO or higher to hide routine logs and only see important events.
+# - Both loglevel and consolelevel are independent.
+#
+# Loglevel options: TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL
+#
+# TRACE is for routine/status messages to avoid log bloat. Use only if you want to see every status message.
+#
+# Example:
+#   loglevel: TRACE
+#   consolelevel: INFO
+#   # This will log all messages to file, but only show important info on the console.

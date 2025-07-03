@@ -57,11 +57,25 @@ consolelevel: "INFO"    # Konsolen-Level (was im Terminal ausgegeben wird)
 ```
 
 **Was ist auf welcher Stufe enthalten?**
-- `CRITICAL`: Nur fatale Fehler, die das Programm beenden (z.B. fehlende Config, nicht behebbarer Fehler)
-- `ERROR`: Alle Fehler, inkl. fehlgeschlagene Provider-Updates, ungültige IPs, Benachrichtigungsfehler, Config-Fehler
-- `WARNING`: Warnungen zu nicht-fatalen Problemen (z.B. Provider konnte nicht aktualisiert werden, keine gültige IP gefunden, Fallback genutzt)
-- `INFO`: Alle erfolgreichen Update-Versuche, übersprungene Updates (IP unverändert), Config-Reloads, Benachrichtigungen, und alles oben genannte
-- `DEBUG`: Detaillierte technische Infos, inkl. aller Requests/Responses, IP-Erkennungsschritte, Provider-Payloads, und alles oben genannte
+| Loglevel | Beschreibung |
+|----------|--------------|
+| TRACE    | Routine-/Statusmeldungen (z.B. "IP unverändert", "Nächster Lauf in ..."). Nur sichtbar, wenn TRACE gesetzt ist. Für regelmäßige Statusmeldungen, um Log-Spam zu vermeiden. |
+| DEBUG    | Detaillierte Debug-Informationen. |
+| INFO     | Normale Betriebsinformationen. |
+| WARNING  | Warnungen, unerwartete, aber nicht fatale Ereignisse. |
+| ERROR    | Fehler, die Aufmerksamkeit erfordern. |
+| CRITICAL | Kritische Fehler, das Programm wird beendet. |
+
+### Beispiel-Konfiguration für loglevel und consolelevel
+
+```yaml
+loglevel: TRACE         # Dateiloglevel: alles loggen, inkl. Routine-Meldungen
+consolelevel: INFO      # Konsolenlevel: nur wichtige Infos und höher anzeigen
+```
+
+- `loglevel` steuert, was in die Logdatei geschrieben wird (sofern aktiviert).
+- `consolelevel` steuert, was auf der Konsole ausgegeben wird.
+- Setze einen der Werte auf `TRACE`, um Routine-/Statusmeldungen zu sehen (z.B. "IP unverändert", "Nächster Lauf in ...").
 
 **Beispiele für Log-Einträge:**
 - Jeder IP-Check (alle `timer` Sekunden)
