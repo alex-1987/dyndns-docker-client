@@ -832,9 +832,9 @@ def main():
             current_ip = get_public_ip(ip_service) if ip_service else None
             current_ip6 = get_public_ipv6(ip6_service) if ip6_service else None
             if current_ip:
-                log(f"Current public IP: {current_ip}", section="MAIN")
+                log(f"Current public IP: {current_ip}", "TRACE", section="MAIN")
             if current_ip6:
-                log(f"Current public IPv6: {current_ip6}", section="MAIN")
+                log(f"Current public IPv6: {current_ip6}", "TRACE", section="MAIN")
             failed_providers = []
             for provider in providers:
                 result = update_provider(provider, current_ip, current_ip6)
@@ -852,13 +852,20 @@ def main():
         if elapsed >= timer:
             current_ip = get_public_ip(ip_service) if ip_service else None
             current_ip6 = get_public_ipv6(ip6_service) if ip6_service else None
-            if current_ip:
-                log(f"Current public IP: {current_ip}", section="MAIN")
-            if current_ip6:
-                log(f"Current public IPv6: {current_ip6}", section="MAIN")
             # Check for IP change or failed providers
             ip_changed = (current_ip != last_ip) if ip_service else False
             ip6_changed = (current_ip6 != last_ip6) if ip6_service else False
+            # Log current IPs: INFO if changed, TRACE if unchanged
+            if current_ip:
+                if ip_changed:
+                    log(f"Current public IP: {current_ip}", "INFO", section="MAIN")
+                else:
+                    log(f"Current public IP: {current_ip}", "TRACE", section="MAIN")
+            if current_ip6:
+                if ip6_changed:
+                    log(f"Current public IPv6: {current_ip6}", "INFO", section="MAIN")
+                else:
+                    log(f"Current public IPv6: {current_ip6}", "TRACE", section="MAIN")
             if ip_changed or ip6_changed or failed_providers:
                 if ip_changed:
                     log(f"New IP detected: {current_ip} (previous: {last_ip}) – update will be performed.", section="MAIN")
