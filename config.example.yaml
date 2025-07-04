@@ -31,18 +31,29 @@ logging:
   max_size_mb: 10                # Maximum size in MB before rotation
   backup_count: 3                # Number of backup files to keep
 
+# Console and file log levels
+consolelevel: "INFO"   # Minimum level for messages to appear in the console (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+loglevel: "WARNING"    # Minimum level for messages to be written to the log file (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+
+# Explanation:
+# - 'consolelevel' controls which messages are shown in the console output (stdout).
+# - 'loglevel' controls which messages are written to the log file (if file logging is enabled).
+# - For example, with consolelevel: "INFO" and loglevel: "WARNING":
+#     - INFO, WARNING, ERROR, and CRITICAL messages appear in the console.
+#     - Only WARNING, ERROR, and CRITICAL messages are written to the log file.
+# - This allows you to keep the console more verbose, while keeping the log file clean and focused on important events.
 
 # Service to fetch the public IPv4 address
 ip_service: "https://api.ipify.org"
 # Or use a local network interface instead 
 # (requires Docker to run with --network host or network_mode: host):
-interface: "eth0"  # Replace with your actual interface name
+# interface: "eth0"  # Replace with your actual interface name
 
 # Service to fetch the public IPv6 address (optional)
 # ip6_service: "https://api64.ipify.org"
 # Or use a local network interface instead
 # (requires Docker to run with --network host or network_mode: host):
-interface6: "eth0"  # Replace with your actual interface name
+# interface6: "eth0"  # Replace with your actual interface name
 
 skip_update_on_startup: true  # If true, no provider updates will be performed on container start if the IP has not changed.
 # If false or not set, an update will always be performed on startup, even if the IP is the same.
@@ -183,7 +194,7 @@ providers:
     extra_params:
       system: "dyndns"
 
-  # Other examples with extra params
+  # Example with extra parameters for custom providers
   - name: example-with-extras
     protocol: dyndns2
     url: "https://example.com/nic/update"
