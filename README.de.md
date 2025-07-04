@@ -156,6 +156,35 @@ ip6_service: "https://api64.ipify.org"  # (Optional) Service zum Abrufen der öf
 skip_update_on_startup: true  # Siehe unten!
 ```
 
+### Netzwerk-Interface-Konfiguration (Alternative zu IP-Services)
+
+Statt externe IP-Services zu verwenden, kann der Client IP-Adressen direkt von Netzwerk-Interfaces lesen:
+
+```yaml
+# Netzwerk-Interface anstelle eines externen Services für IPv4
+interface: "eth0"  # Ersetze durch den Namen deines tatsächlichen Interfaces
+
+# Netzwerk-Interface anstelle eines externen Services für IPv6 (optional)
+interface6: "eth0"  # Ersetze durch den Namen deines tatsächlichen Interfaces
+```
+
+**Voraussetzungen für Interface-Modus:**
+- Docker muss mit `network_mode: host` laufen, um auf Host-Interfaces zugreifen zu können
+- Das angegebene Interface muss existieren und eine gültige öffentliche IP-Adresse haben
+- Für IPv6 werden link-lokale Adressen (fe80::/10) automatisch übersprungen
+
+**Beispiel docker-compose.yml für Interface-Modus:**
+```yaml
+services:
+  dyndns-client:
+    image: alexfl1987/dyndns:latest-stable
+    network_mode: host  # Erforderlich für Interface-Zugriff!
+    volumes:
+      - ./config:/app/config
+```
+
+**Hinweis:** Du kannst entweder `ip_service`/`ip6_service` ODER `interface`/`interface6` verwenden, nicht beides gleichzeitig.
+
 ### Provider-Konfiguration
 
 ```yaml
@@ -278,30 +307,3 @@ MIT License
 
 Dieses Projekt wurde mit Unterstützung von **GitHub Copilot** erstellt.  
 Bei Fehlern oder Verbesserungsvorschlägen gerne ein Issue im Repository eröffnen!
-
----
-
-# Deutsche README-Aktualisierung
-
-```markdown
-## Netzwerkschnittstellen-Konfiguration
-
-Diese Anwendung unterstützt das Abrufen von IP-Adressen von lokalen Netzwerkschnittstellen anstelle von externen Diensten. Dies kann nützlich sein, wenn:
-
-- Du dich in einem Netzwerk ohne Internetzugang befindest
-- Du eine dedizierte öffentliche IPv4/IPv6-Adresse hast, die einer Schnittstelle zugewiesen ist
-- Du die Abhängigkeit von externen IP-Diensten vermeiden möchtest
-
-### Anforderungen für den Interface-Modus
-
-Um diese Funktion mit Docker zu nutzen, musst du den Container im Host-Netzwerkmodus ausführen:
-
-```yaml
-# docker-compose.yml Beispiel
-services:
-  dyndns:
-    image: alex-1987/dyndns-docker-client:latest
-    network_mode: host  # Dies ist NUR bei Verwendung des Interface-Modus erforderlich!
-    volumes:
-      - ./config:/app/config
-```

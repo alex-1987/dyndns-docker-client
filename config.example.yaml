@@ -36,13 +36,13 @@ logging:
 ip_service: "https://api.ipify.org"
 # Or use a local network interface instead 
 # (requires Docker to run with --network host or network_mode: host):
-interface: "eth0"  # Replace with your actual interface name
+# interface: "eth0"  # Replace with your actual interface name
 
 # Service to fetch the public IPv6 address (optional)
 # ip6_service: "https://api64.ipify.org"
 # Or use a local network interface instead
 # (requires Docker to run with --network host or network_mode: host):
-interface6: "eth0"  # Replace with your actual interface name
+# interface6: "eth0"  # Replace with your actual interface name
 
 skip_update_on_startup: true  # If true, no provider updates will be performed on container start if the IP has not changed.
 # If false or not set, an update will always be performed on startup, even if the IP is the same.

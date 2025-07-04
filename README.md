@@ -161,6 +161,35 @@ ip6_service: "https://api64.ipify.org"  # (Optional) Service to fetch public IPv
 skip_update_on_startup: true  # See below!
 ```
 
+### Network Interface Configuration (Alternative to IP Services)
+
+Instead of using external IP services, you can configure the client to read IP addresses directly from network interfaces:
+
+```yaml
+# Use network interface instead of external service for IPv4
+interface: "eth0"  # Replace with your actual interface name
+
+# Use network interface instead of external service for IPv6 (optional)
+interface6: "eth0"  # Replace with your actual interface name
+```
+
+**Requirements for Interface Mode:**
+- Docker must run with `network_mode: host` to access host interfaces
+- The specified interface must exist and have a valid public IP address
+- For IPv6, link-local addresses (fe80::/10) are automatically skipped
+
+**Example docker-compose.yml for interface mode:**
+```yaml
+services:
+  dyndns-client:
+    image: alexfl1987/dyndns:latest-stable
+    network_mode: host  # Required for interface access!
+    volumes:
+      - ./config:/app/config
+```
+
+**Note:** You can use either `ip_service`/`ip6_service` OR `interface`/`interface6`, not both simultaneously.
+
 ### Provider Configuration
 
 ```yaml
@@ -283,28 +312,4 @@ MIT License
 
 This project was created with the help of **GitHub Copilot**.  
 If you find bugs or have suggestions, please open an issue in the repository!
-
----
-
-## Network Interface Configuration
-
-This application supports retrieving IP addresses from local network interfaces instead of using external services. This can be useful when:
-
-- You're in a network without internet access
-- You have a dedicated public IPv4/IPv6 address assigned to an interface
-- You want to avoid dependency on external IP services
-
-### Requirements for Interface Mode
-
-To use this feature with Docker, you must run the container with host network mode:
-
-```yaml
-# docker-compose.yml example
-services:
-  dyndns:
-    image: alex-1987/dyndns-docker-client:latest
-    network_mode: host  # This is required ONLY when using interface mode!
-    volumes:
-      - ./config:/app/config
-```
 
