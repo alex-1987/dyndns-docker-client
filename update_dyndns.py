@@ -16,7 +16,6 @@ import datetime
 
 print("DYNDNS CLIENT STARTUP")
 
-
 config = None  # global, so update_provider can access it
 
 # Global variables
@@ -24,17 +23,30 @@ log_level = "INFO"         # For file logging
 console_level = "INFO"     # For console output
 file_logger_instance = None
 
+# Add a custom loglevel for very verbose, routine messages
+CUSTOM_LEVELS = ["TRACE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+
+# Add custom TRACE loglevel (lower than DEBUG)
+TRACE_LEVEL_NUM = 5
+logging.addLevelName(TRACE_LEVEL_NUM, "TRACE")
+
+def trace(self, message, *args, **kws):
+    if self.isEnabledFor(TRACE_LEVEL_NUM):
+        self._log(TRACE_LEVEL_NUM, message, args, **kws)
+logging.Logger.trace = trace
+
 def setup_logging(loglevel, config=None):
     """
     Configures logging with the specified level.
     Enhanced to support file logging if configured.
+    Adds support for custom TRACE loglevel.
     
     Args:
-        loglevel: Log level as string (e.g. "INFO", "DEBUG")
+        loglevel: Log level as string (e.g. "INFO", "DEBUG", "TRACE")
         config: Optional configuration dictionary for file logging
     """
     global log_level, file_logger_instance
-    log_level = loglevel
+    log_level = loglevel.upper()
     
     # Only setup file logging if explicitly enabled
     if config and config.get("logging", {}).get("enabled", False):
@@ -54,7 +66,11 @@ def setup_logging(loglevel, config=None):
             
             # Create file logger
             file_logger_instance = logging.getLogger("dyndns_file")
-            file_logger_instance.setLevel(getattr(logging, loglevel))
+            # Support custom TRACE loglevel
+            if log_level == "TRACE":
+                file_logger_instance.setLevel(TRACE_LEVEL_NUM)
+            else:
+                file_logger_instance.setLevel(getattr(logging, log_level, logging.INFO))
             file_logger_instance.handlers = []  # Clear any existing handlers
             file_logger_instance.addHandler(file_handler)
             file_logger_instance.propagate = False
@@ -69,13 +85,16 @@ def log(message, level="INFO", section="MAIN"):
     """
     Log a message with the specified level and section.
     Console output is filtered by consolelevel, file output by loglevel.
+    Supports custom TRACE loglevel for routine/status messages.
     """
     global log_level, console_level, file_logger_instance
-    levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+    # Add TRACE to levels
+    levels = ["TRACE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+    level = level.upper()
     # Console output
     try:
         message_level_index = levels.index(level)
-        console_level_index = levels.index(console_level)
+        console_level_index = levels.index(console_level.upper())
         should_log_console = message_level_index >= console_level_index
     except ValueError:
         should_log_console = True
@@ -87,24 +106,29 @@ def log(message, level="INFO", section="MAIN"):
     if file_logger_instance:
         try:
             message_level_index = levels.index(level)
-            file_level_index = levels.index(log_level)
+            file_level_index = levels.index(log_level.upper())
             should_log_file = message_level_index >= file_level_index
         except ValueError:
             should_log_file = True
         if should_log_file:
             file_message = f"{section} --> {message}"
-            log_method = getattr(file_logger_instance, level.lower(), file_logger_instance.info)
-            log_method(file_message)
+            # Use custom trace method if TRACE
+            if level == "TRACE":
+                file_logger_instance.trace(file_message)
+            else:
+                log_method = getattr(file_logger_instance, level.lower(), file_logger_instance.info)
+                log_method(file_message)
 
 def should_log(level, configured_level):
     """
     Determine if a message should be logged based on its level and the configured level.
     This replicates your existing logic for log filtering.
+    Supports custom TRACE loglevel.
     """
-    levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+    levels = ["TRACE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
     try:
-        message_idx = levels.index(level)
-        config_idx = levels.index(configured_level)
+        message_idx = levels.index(level.upper())
+        config_idx = levels.index(configured_level.upper())
         return message_idx >= config_idx
     except ValueError:
         return True  # If level not recognized, log it anyway
@@ -205,11 +229,11 @@ def update_cloudflare(provider, ip, ip6=None):
         url_a = f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records?name={record_name}&type=A"
         resp_a = requests.get(url_a, headers=headers)
         data_a = resp_a.json()
-        log(f"Cloudflare GET A response: {data_a}", section="CLOUDFLARE")
+        log(f"Cloudflare GET A response: {data_a}", "DEBUG", section="CLOUDFLARE")
         if data_a.get("success") and data_a["result"]:
             record_a = data_a["result"][0]
             if record_a["content"] == ip:
-                log(f"No update needed (IPv4 already set: {ip}).", "INFO", section="CLOUDFLARE")
+                log(f"No update needed (IPv4 already set: {ip}).", "TRACE", section="CLOUDFLARE")
             else:
                 url_patch = f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records/{record_a['id']}"
                 data_patch = {
@@ -218,7 +242,7 @@ def update_cloudflare(provider, ip, ip6=None):
                     "content": ip
                 }
                 resp_patch = requests.patch(url_patch, json=data_patch, headers=headers)
-                log(f"Cloudflare PATCH A response: {resp_patch.text}", section="CLOUDFLARE")
+                log(f"Cloudflare PATCH A response: {resp_patch.text}", "DEBUG", section="CLOUDFLARE")
                 if resp_patch.ok:
                     updated = True
                     nochg = False
@@ -231,11 +255,11 @@ def update_cloudflare(provider, ip, ip6=None):
         url_aaaa = f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records?name={record_name}&type=AAAA"
         resp_aaaa = requests.get(url_aaaa, headers=headers)
         data_aaaa = resp_aaaa.json()
-        log(f"Cloudflare GET AAAA response: {data_aaaa}", section="CLOUDFLARE")
+        log(f"Cloudflare GET AAAA response: {data_aaaa}", "DEBUG", section="CLOUDFLARE")
         if data_aaaa.get("success") and data_aaaa["result"]:
             record_aaaa = data_aaaa["result"][0]
             if record_aaaa["content"] == ip6:
-                log(f"No update needed (IPv6 already set: {ip6}).", "INFO", section="CLOUDFLARE")
+                log(f"No update needed (IPv6 already set: {ip6}).", "TRACE", section="CLOUDFLARE")
             else:
                 url_patch = f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records/{record_aaaa['id']}"
                 data_patch = {
@@ -292,7 +316,7 @@ def update_ipv64(provider, ip, ip6=None):
         log("Update interval at ipv64.net exceeded! Update limit reached.", "ERROR", section="IPV64")
         return False
     if "nochg" in resp_text or "no change" in resp_text:
-        log("No update needed (nochg).", "INFO", section="IPV64")
+        log("No update needed (nochg).", "TRACE", section="IPV64")
         return "nochg"
     if "good" in resp_text or "success" in resp_text:
         return "updated"
@@ -364,7 +388,7 @@ def update_dyndns2(provider, ip, ip6=None):
         if "good" in response_text or "updated" in response_text or "update succeed" in response_text or "success" in response_text:
             return "updated"
         elif "nochg" in response_text or "nochange" in response_text:
-            log(f"[{provider_name}] No update needed (nochg).", "INFO", section="DYNDNS2")
+            log(f"[{provider_name}] No update needed (nochg).", "TRACE", section="DYNDNS2")
             return "nochg"
         else:
             log(f"[{provider_name}] update failed: {response_text}", "ERROR", section="DYNDNS2")
@@ -451,7 +475,7 @@ def update_provider(provider, ip, ip6=None, log_success_if_nochg=True, old_ip=No
                 )
             elif result == "nochg":
                 if log_success_if_nochg:
-                    log(f"Provider '{provider_name}' was already up to date, no update performed.", "INFO", section="CLOUDFLARE")
+                    log(f"Provider '{provider_name}' was already up to date, no update performed.", "TRACE", section="CLOUDFLARE")
             else:
                 error_msg = f"Provider '{provider_name}' update failed. See previous log for details."
                 log(error_msg, "ERROR", section="CLOUDFLARE")
@@ -480,7 +504,7 @@ def update_provider(provider, ip, ip6=None, log_success_if_nochg=True, old_ip=No
                 )
             elif result == "nochg":
                 if log_success_if_nochg:
-                    log(f"Provider '{provider_name}' was already up to date, no update performed.", "INFO", section="IPV64")
+                    log(f"Provider '{provider_name}' was already up to date, no update performed.", "TRACE", section="IPV64")
             else:
                 error_msg = f"Provider '{provider_name}' update failed. See previous log for details."
                 log(error_msg, "ERROR", section="IPV64")
@@ -509,7 +533,7 @@ def update_provider(provider, ip, ip6=None, log_success_if_nochg=True, old_ip=No
                 )
             elif result == "nochg":
                 if log_success_if_nochg:
-                    log(f"Provider '{provider_name}' was already up to date, no update performed.", "INFO", section="DYNDNS2")
+                    log(f"Provider '{provider_name}' was already up to date, no update performed.", "TRACE", section="DYNDNS2")
             else:
                 error_msg = f"Provider '{provider_name}' update failed. See previous log for details."
                 log(error_msg, "ERROR", section="DYNDNS2")
@@ -713,7 +737,6 @@ def main():
         log(f"Using interface to determine IPv4: {ip_interface}", section="MAIN") 
     else:
         log("No method configured to determine IPv4", "WARNING", section="MAIN")
-        
     if ip6_service:
         log(f"Using service to determine IPv6: {ip6_service}", section="MAIN")
     elif ip6_interface:
@@ -758,7 +781,7 @@ def main():
     ip6_changed = (test_ip6 != last_ip6) if test_ip6 else False
 
     if skip_on_startup and not ip_changed and not ip6_changed:
-        log("IP has not changed since last run. No provider updates needed on startup.", "INFO", section="MAIN")
+        log("IP has not changed since last run. No provider updates needed on startup.", "TRACE", section="MAIN")
         # IPs trotzdem speichern, falls sie vorher noch nicht gespeichert waren
         save_last_ip("v4", test_ip)
         save_last_ip("v6", test_ip6)
@@ -782,7 +805,7 @@ def main():
     elapsed = 0
     check_interval = 2  # Seconds, how often to check for config changes
 
-    log(f"Next run in {timer} seconds...", section="MAIN")
+    log(f"Next run in {timer} seconds...", "TRACE", section="MAIN")
 
     while True:
         time.sleep(check_interval)
@@ -801,17 +824,40 @@ def main():
             if not validate_config(config):
                 log("Configuration invalid after change. Waiting for next change...", "ERROR")
                 continue
+            
+            # Reload logging configuration
+            new_loglevel = config.get("loglevel", "INFO")
+            new_consolelevel = config.get("consolelevel", new_loglevel)
+            if new_loglevel != log_level or new_consolelevel != console_level:
+                log(f"Updating log levels: loglevel={new_loglevel}, consolelevel={new_consolelevel}", "INFO", section="MAIN")
+                log_level = new_loglevel
+                console_level = new_consolelevel
+                setup_logging(new_loglevel, config)
+            
             timer = config.get('timer', 300)
-            ip_service = config.get('ip_service', 'https://api.ipify.org')
+            ip_service = config.get('ip_service', None)
+            ip_interface = config.get('interface', None)
             ip6_service = config.get('ip6_service', None)
+            ip6_interface = config.get('interface6', None)
             providers = config['providers']
             last_config_mtime = current_mtime
-            current_ip = get_public_ip(ip_service) if ip_service else None
-            current_ip6 = get_public_ipv6(ip6_service) if ip6_service else None
+            
+            # Get current IPs using updated configuration
+            current_ip = None
+            if ip_service:
+                current_ip = get_public_ip(ip_service)
+            elif ip_interface:
+                current_ip = get_interface_ipv4(ip_interface)
+                
+            current_ip6 = None
+            if ip6_service:
+                current_ip6 = get_public_ipv6(ip6_service)
+            elif ip6_interface:
+                current_ip6 = get_interface_ipv6(ip6_interface)
             if current_ip:
-                log(f"Current public IP: {current_ip}", section="MAIN")
+                log(f"Current public IP: {current_ip}", "TRACE", section="MAIN")
             if current_ip6:
-                log(f"Current public IPv6: {current_ip6}", section="MAIN")
+                log(f"Current public IPv6: {current_ip6}", "TRACE", section="MAIN")
             failed_providers = []
             for provider in providers:
                 result = update_provider(provider, current_ip, current_ip6)
@@ -822,20 +868,38 @@ def main():
             last_ip = current_ip
             last_ip6 = current_ip6
             elapsed = 0
-            log(f"Next run in {timer} seconds...", section="MAIN")
+            log(f"Next run in {timer} seconds...", "TRACE", section="MAIN")
             continue
 
         # Timer-based update as usual
         if elapsed >= timer:
-            current_ip = get_public_ip(ip_service) if ip_service else None
-            current_ip6 = get_public_ipv6(ip6_service) if ip6_service else None
-            if current_ip:
-                log(f"Current public IP: {current_ip}", section="MAIN")
-            if current_ip6:
-                log(f"Current public IPv6: {current_ip6}", section="MAIN")
+            # Get current IPs using current configuration
+            current_ip = None
+            if ip_service:
+                current_ip = get_public_ip(ip_service)
+            elif ip_interface:
+                current_ip = get_interface_ipv4(ip_interface)
+                
+            current_ip6 = None
+            if ip6_service:
+                current_ip6 = get_public_ipv6(ip6_service)
+            elif ip6_interface:
+                current_ip6 = get_interface_ipv6(ip6_interface)
+                
             # Check for IP change or failed providers
-            ip_changed = (current_ip != last_ip) if ip_service else False
-            ip6_changed = (current_ip6 != last_ip6) if ip6_service else False
+            ip_changed = (current_ip != last_ip) if current_ip is not None else False
+            ip6_changed = (current_ip6 != last_ip6) if current_ip6 is not None else False
+            # Log current IPs: INFO if changed, TRACE if unchanged
+            if current_ip:
+                if ip_changed:
+                    log(f"Current public IP: {current_ip}", "INFO", section="MAIN")
+                else:
+                    log(f"Current public IP: {current_ip}", "TRACE", section="MAIN")
+            if current_ip6:
+                if ip6_changed:
+                    log(f"Current public IPv6: {current_ip6}", "INFO", section="MAIN")
+                else:
+                    log(f"Current public IPv6: {current_ip6}", "TRACE", section="MAIN")
             if ip_changed or ip6_changed or failed_providers:
                 if ip_changed:
                     log(f"New IP detected: {current_ip} (previous: {last_ip}) – update will be performed.", section="MAIN")
@@ -854,14 +918,14 @@ def main():
                 last_ip = current_ip
                 last_ip6 = current_ip6
                 elapsed = 0
-                log(f"Next run in {timer} seconds...", section="MAIN")
+                log(f"Next run in {timer} seconds...", "TRACE", section="MAIN")
             else:
                 if current_ip:
-                    log(f"IP unchanged ({current_ip}), no update needed.", section="MAIN")
+                    log(f"IP unchanged ({current_ip}), no update needed.", "TRACE", section="MAIN")
                 if current_ip6:
-                    log(f"IPv6 unchanged ({current_ip6}), no update needed.", section="MAIN")
+                    log(f"IPv6 unchanged ({current_ip6}), no update needed.", "TRACE", section="MAIN")
                 elapsed = 0
-                log(f"Next run in {timer} seconds...", section="MAIN")
+                log(f"Next run in {timer} seconds...", "TRACE", section="MAIN")
 
 if __name__ == "__main__":
     main()

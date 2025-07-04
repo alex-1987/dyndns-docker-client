@@ -60,8 +60,9 @@ consolelevel: "INFO"    # Console log level (what is printed to the terminal)
 - `CRITICAL`: Only fatal errors that cause the program to exit (e.g. missing config, unrecoverable errors)
 - `ERROR`: All errors, including failed provider updates, invalid IPs, notification failures, config errors
 - `WARNING`: Warnings about non-fatal issues (e.g. provider could not be updated, no valid IP found, fallback used)
-- `INFO`: All successful update attempts, skipped updates (IP unchanged), config reloads, notification sends, and all of the above
+- `INFO`: All successful update attempts, config reloads, notification sends, and all of the above
 - `DEBUG`: Detailed technical information, including all requests/responses, IP detection steps, provider payloads, and all of the above
+- `TRACE`: Routine and very verbose messages (e.g. "IP unchanged", "Next run in ... seconds"). Use this level if you want to see every check and loop, but be aware it will make the log file much larger.
 
 **Examples of what you see in the log:**
 - Every IP check (every `timer` seconds)
@@ -70,19 +71,33 @@ consolelevel: "INFO"    # Console log level (what is printed to the terminal)
 - All notifications sent (and failures)
 - All config reloads and hot-reload events
 - All startup and shutdown events
+- With `TRACE`: Also all routine status messages (e.g. "IP unchanged", "Next run in ...")
 
 **Note:**
 - If you do not set `consolelevel`, the console output will use the same level as `loglevel`.
 - File logging must be enabled in the `logging` section of your config to write logs to a file.
 
-Example config:
+### Loglevels Overview
+
+| Loglevel | Description |
+|----------|-------------|
+| TRACE    | Routine/status messages (e.g. "IP unchanged", "Next run in ..."). Only shown if TRACE is set. Use for regular status to avoid log bloat. |
+| DEBUG    | Debugging information, more detailed than INFO. |
+| INFO     | Normal operational messages. |
+| WARNING  | Warnings, something unexpected but not fatal. |
+| ERROR    | Errors that require attention. |
+| CRITICAL | Critical errors, program will exit. |
+
+### Example configuration for loglevel and consolelevel
+
 ```yaml
-loglevel: "INFO"
-consolelevel: "WARNING"
-logging:
-  enabled: true
-  file: "/var/log/dyndns/dyndns.log"
+loglevel: TRACE         # File loglevel: logs everything including routine messages
+consolelevel: INFO      # Console loglevel: only show important info and above
 ```
+
+- `loglevel` controls what is written to the log file (if file logging is enabled).
+- `consolelevel` controls what is printed to the console.
+- Set either to `TRACE` to see routine/status messages (e.g. "IP unchanged", "Next run in ...").
 
 ---
 
@@ -145,6 +160,35 @@ ip_service: "https://api.ipify.org"  # Service to fetch public IPv4
 ip6_service: "https://api64.ipify.org"  # (Optional) Service to fetch public IPv6
 skip_update_on_startup: true  # See below!
 ```
+
+### Network Interface Configuration (Alternative to IP Services)
+
+Instead of using external IP services, you can configure the client to read IP addresses directly from network interfaces:
+
+```yaml
+# Use network interface instead of external service for IPv4
+interface: "eth0"  # Replace with your actual interface name
+
+# Use network interface instead of external service for IPv6 (optional)
+interface6: "eth0"  # Replace with your actual interface name
+```
+
+**Requirements for Interface Mode:**
+- Docker must run with `network_mode: host` to access host interfaces
+- The specified interface must exist and have a valid public IP address
+- For IPv6, link-local addresses (fe80::/10) are automatically skipped
+
+**Example docker-compose.yml for interface mode:**
+```yaml
+services:
+  dyndns-client:
+    image: alexfl1987/dyndns:latest-stable
+    network_mode: host  # Required for interface access!
+    volumes:
+      - ./config:/app/config
+```
+
+**Note:** You can use either `ip_service`/`ip6_service` OR `interface`/`interface6`, not both simultaneously.
 
 ### Provider Configuration
 
@@ -268,28 +312,4 @@ MIT License
 
 This project was created with the help of **GitHub Copilot**.  
 If you find bugs or have suggestions, please open an issue in the repository!
-
----
-
-## Network Interface Configuration
-
-This application supports retrieving IP addresses from local network interfaces instead of using external services. This can be useful when:
-
-- You're in a network without internet access
-- You have a dedicated public IPv4/IPv6 address assigned to an interface
-- You want to avoid dependency on external IP services
-
-### Requirements for Interface Mode
-
-To use this feature with Docker, you must run the container with host network mode:
-
-```yaml
-# docker-compose.yml example
-services:
-  dyndns:
-    image: alex-1987/dyndns-docker-client:latest
-    network_mode: host  # This is required ONLY when using interface mode!
-    volumes:
-      - ./config:/app/config
-```
 
