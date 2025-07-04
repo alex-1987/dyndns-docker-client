@@ -39,14 +39,13 @@ def setup_logging(loglevel, config=None):
     """
     Configures logging with the specified level.
     Enhanced to support file logging if configured.
-    Adds support for custom TRACE loglevel.
     
     Args:
-        loglevel: Log level as string (e.g. "INFO", "DEBUG", "TRACE")
+        loglevel: Log level as string (e.g. "INFO", "DEBUG")
         config: Optional configuration dictionary for file logging
     """
     global log_level, file_logger_instance
-    log_level = loglevel.upper()
+    log_level = loglevel
     
     # Only setup file logging if explicitly enabled
     if config and config.get("logging", {}).get("enabled", False):
@@ -55,6 +54,12 @@ def setup_logging(loglevel, config=None):
             log_file = log_config.get("file", "/var/log/dyndns/dyndns.log")
             max_size = log_config.get("max_size_mb", 10) * 1024 * 1024
             backup_count = log_config.get("backup_count", 3)
+            
+            # Validate configuration values
+            if max_size <= 0:
+                raise ValueError("max_size_mb must be greater than 0")
+            if backup_count < 0:
+                raise ValueError("backup_count must be 0 or greater")
             
             # Ensure directory exists
             os.makedirs(os.path.dirname(log_file), exist_ok=True)
@@ -66,58 +71,72 @@ def setup_logging(loglevel, config=None):
             
             # Create file logger
             file_logger_instance = logging.getLogger("dyndns_file")
-            # Support custom TRACE loglevel
-            if log_level == "TRACE":
-                file_logger_instance.setLevel(TRACE_LEVEL_NUM)
-            else:
-                file_logger_instance.setLevel(getattr(logging, log_level, logging.INFO))
+            file_logger_instance.setLevel(TRACE_LEVEL_NUM if loglevel == "TRACE" else getattr(logging, loglevel))
             file_logger_instance.handlers = []  # Clear any existing handlers
             file_logger_instance.addHandler(file_handler)
             file_logger_instance.propagate = False
             
-            print(f"{datetime.datetime.now(datetime.timezone.utc).isoformat()} [INFO] LOGGING --> File logging enabled: {log_file}")
+            # Log initial message to file
+            start_msg = f"Log file enabled: {log_file} (max size: {max_size/1024/1024:.1f}MB, backups: {backup_count})"
+            file_logger_instance.info(start_msg)
+            print(f"{datetime.datetime.now(datetime.timezone.utc).isoformat()} [INFO] LOGGING --> {start_msg}")
             
         except Exception as e:
             print(f"{datetime.datetime.now(datetime.timezone.utc).isoformat()} [ERROR] LOGGING --> Failed to setup file logging: {e}")
             file_logger_instance = None
+    
+    return loglevel
 
-def log(message, level="INFO", section="MAIN"):
+def log(message, level="INFO", section="MAIN", file_only_on_change=False):
     """
     Log a message with the specified level and section.
-    Console output is filtered by consolelevel, file output by loglevel.
-    Supports custom TRACE loglevel for routine/status messages.
+    Always logs to console, additionally logs to file if configured.
+    
+    Args:
+        message: The message to log
+        level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        section: Section/component name for the log
+        file_only_on_change: If True, only log to file for ERROR/CRITICAL levels
     """
-    global log_level, console_level, file_logger_instance
-    # Add TRACE to levels
+    global console_level, file_level, file_logger_instance
+    
+    # Get log levels with defaults
+    console_level = globals().get('console_level', 'INFO')
+    file_level = globals().get('file_level', 'WARNING')
+    
+    # Log levels for filtering
     levels = ["TRACE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-    level = level.upper()
-    # Console output
     try:
-        message_level_index = levels.index(level)
-        console_level_index = levels.index(console_level.upper())
-        should_log_console = message_level_index >= console_level_index
+        message_idx = levels.index(level)
+        console_idx = levels.index(console_level)
+        should_log_console = message_idx >= console_idx
     except ValueError:
         should_log_console = True
+    
+    # Always log to console if level permits
     if should_log_console:
         timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        console_message = f"{timestamp} [{level}] {section} --> {message}"
-        print(console_message)
-    # File output
-    if file_logger_instance:
+        print(f"{timestamp} [{level}] {section} --> {message}")
+    
+    # Additionally log to file if configured
+    if file_logger_instance is not None:
+        # Check if we should log to file
+        should_log_file = True
+        if file_only_on_change and level not in ("ERROR", "CRITICAL"):
+            should_log_file = False
+        
+        # Check file log level
         try:
-            message_level_index = levels.index(level)
-            file_level_index = levels.index(log_level.upper())
-            should_log_file = message_level_index >= file_level_index
+            file_idx = levels.index(file_level)
+            if message_idx < file_idx:
+                should_log_file = False
         except ValueError:
-            should_log_file = True
+            pass
+        
         if should_log_file:
             file_message = f"{section} --> {message}"
-            # Use custom trace method if TRACE
-            if level == "TRACE":
-                file_logger_instance.trace(file_message)
-            else:
-                log_method = getattr(file_logger_instance, level.lower(), file_logger_instance.info)
-                log_method(file_message)
+            log_method = getattr(file_logger_instance, level.lower(), file_logger_instance.info)
+            log_method(file_message)
 
 def should_log(level, configured_level):
     """
@@ -405,10 +424,41 @@ def validate_config(config):
     """
     required_top = ["timer", "providers"]
     allowed_protocols = ("cloudflare", "ipv64", "dyndns2")
+    
     for key in required_top:
         if key not in config:
             log(f"Missing key '{key}' in config.yaml.", "ERROR")
             return False
+    
+    # Validate logging configuration if present
+    if "logging" in config:
+        logging_config = config["logging"]
+        if not isinstance(logging_config, dict):
+            log("The field 'logging' must be a dictionary.", "ERROR")
+            return False
+        
+        # Check for valid logging options
+        valid_logging_keys = ["enabled", "file", "max_size_mb", "backup_count"]
+        for key in logging_config:
+            if key not in valid_logging_keys:
+                log(f"Unknown logging option '{key}' in config.yaml.", "WARNING")
+        
+        # Validate file path if logging is enabled
+        if logging_config.get("enabled", False):
+            if "file" not in logging_config:
+                log("Missing 'file' option in logging configuration when enabled=true.", "ERROR")
+                return False
+    
+    # Validate log levels
+    valid_levels = ["TRACE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+    if "consolelevel" in config and config["consolelevel"] not in valid_levels:
+        log(f"Invalid consolelevel '{config['consolelevel']}'. Valid options: {', '.join(valid_levels)}", "ERROR")
+        return False
+    
+    if "loglevel" in config and config["loglevel"] not in valid_levels:
+        log(f"Invalid loglevel '{config['loglevel']}'. Valid options: {', '.join(valid_levels)}", "ERROR")
+        return False
+    
     if not isinstance(config["providers"], list):
         log("The field 'providers' must be a list.", "ERROR")
         return False

@@ -40,6 +40,9 @@ Es unterstützt IPv4 und optional IPv6, prüft regelmäßig die öffentliche IP 
 - **Detailliertes Logging:** Zeigt an, ob ein Update durchgeführt wurde, nicht nötig war oder ein Fehler auftrat.
 - **Benachrichtigungs-Cooldown:** Jeder Dienst kann einen eigenen Cooldown für Benachrichtigungen erhalten.
 - **Provider-Update beim Neustart nur bei IP-Änderung:** Spart unnötige Requests und schützt vor Rate-Limits.
+- **Netzwerkschnittstellen-Unterstützung:** IPs können direkt von lokalen Interfaces abgerufen werden.
+- **Flexibles Logging:** Separates Logging für Konsole und Datei mit Rotation.
+- **IP-Validierung:** Automatische Validierung aller abgerufenen IP-Adressen.
 
 ---
 
@@ -307,3 +310,94 @@ MIT License
 
 Dieses Projekt wurde mit Unterstützung von **GitHub Copilot** erstellt.  
 Bei Fehlern oder Verbesserungsvorschlägen gerne ein Issue im Repository eröffnen!
+
+---
+
+## Logging-Konfiguration
+
+Diese Anwendung unterstützt flexibles Logging sowohl auf der Konsole als auch in einer Logdatei. Du kannst die Ausführlichkeit (Loglevel) für beide Ausgaben unabhängig steuern und Logrotation für eine dauerhafte Speicherung aktivieren.
+
+### Konfigurationsoptionen
+
+Füge folgenden Abschnitt zu deiner `config.yaml` hinzu:
+
+```yaml
+# Logging-Konfiguration (optional)
+logging:
+  enabled: false                 # Auf true setzen, um Datei-Logging zu aktivieren
+  file: "/app/config/dyndns.log" # Pfad zur Logdatei (Verzeichnis wird bei Bedarf erstellt)
+  max_size_mb: 10                # Maximale Größe der Logdatei in MB, bevor rotiert wird
+  backup_count: 3                # Anzahl der zu behaltenden Backup-Dateien
+
+# Loglevel für Konsole und Datei
+consolelevel: "INFO"   # Minimales Level für Nachrichten auf der Konsole
+loglevel: "WARNING"    # Minimales Level für Nachrichten in der Logdatei
+```
+
+### Funktionsweise
+
+- **Konsolen-Logging (`consolelevel`):** Alle Log-Meldungen ab diesem Level werden auf der Konsole (stdout) ausgegeben. Das ist besonders nützlich für die Live-Überwachung, z.B. mit `docker logs <container>`.
+- **Datei-Logging (`loglevel`):** Wenn Datei-Logging aktiviert ist, werden nur Meldungen ab diesem Level in die Logdatei geschrieben. So bleiben deine Logdateien übersichtlich und enthalten nur wichtige Ereignisse.
+- **Logrotation:** Wird die maximale Dateigröße (`max_size_mb`) erreicht, wird die Logdatei rotiert. Es werden so viele Backup-Dateien (`backup_count`) behalten, wie angegeben (z.B. `dyndns.log.1`, `dyndns.log.2`, ...).
+- **Persistente Logs:** Wenn du `/app/config` als Docker-Volume mountest, bleiben deine Logs auch nach einem Container-Neustart erhalten.
+
+### Hinweise
+
+- Wenn der Abschnitt `logging` fehlt oder `enabled` auf `false` steht, ist nur das Konsolen-Logging aktiv.
+- Die Logdatei wird automatisch erstellt, sobald die erste relevante Meldung geloggt wird.
+- Die Logrotation verhindert, dass Logdateien unbegrenzt wachsen.
+- Wenn `consolelevel` und `loglevel` nicht definiert sind, werden Standardwerte verwendet ("INFO" für Konsole, "WARNING" für Datei).
+
+---
+
+## Fehlerbehebung
+
+### Häufige Probleme
+
+1. **Container beendet sich sofort:**
+   - Überprüfe, ob `config/config.yaml` existiert und gültig ist
+   - Prüfe die Dateiberechtigungen (Container muss die Config lesen können)
+   - Schau in die Docker-Logs: `docker logs <container-name>`
+
+2. **Keine Logs sichtbar:**
+   - Verwende `docker logs <container-name>` für die Konsolenausgabe
+   - Stelle sicher, dass der Container läuft: `docker ps`
+   - Für persistente Logs aktiviere das File-Logging in der Config
+
+3. **Provider-Updates schlagen fehl:**
+   - Überprüfe, ob API-Token/Credentials korrekt sind
+   - Teste, ob die Provider-API erreichbar ist
+   - Stelle sicher, dass Domain/Hostname im Provider-Dashboard existiert
+   - Prüfe Rate-Limits - manche Provider haben strenge Beschränkungen
+
+4. **Interface-Modus funktioniert nicht:**
+   - Stelle sicher, dass Docker mit `network_mode: host` läuft
+   - Überprüfe, ob der Interface-Name auf dem Host-System existiert
+   - Prüfe, ob das Interface eine gültige IP-Adresse hat
+
+5. **IPv6-Probleme:**
+   - Nicht alle Provider unterstützen IPv6
+   - Überprüfe, ob dein Netzwerk/ISP IPv6-Konnektivität bereitstellt
+   - Link-lokale Adressen (fe80::) werden automatisch ausgeschlossen
+
+6. **File-Logging funktioniert nicht:**
+   - Prüfe, ob das Log-Verzeichnis beschreibbar ist
+   - Stelle sicher, dass `logging.enabled` auf `true` steht
+   - Überprüfe, ob der Log-Dateipfad im Container zugänglich ist
+
+### Debug-Modus
+
+Für detaillierte Fehlersuche setze das Loglevel auf DEBUG:
+
+```yaml
+consolelevel: "DEBUG"
+loglevel: "DEBUG"
+```
+
+Dies zeigt detaillierte Informationen über:
+- HTTP-Anfragen und -Antworten
+- IP-Erkennungsprozess
+- Provider-Authentifizierung
+- Konfigurationsparsing
+
+---
