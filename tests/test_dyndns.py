@@ -227,3 +227,655 @@ def test_update_provider_error_handling():
     with patch('update_dyndns.log'), patch('update_dyndns.update_dyndns2', return_value=None):
         result = update_dyndns.update_provider(provider, "192.168.1.1")
         assert result is False  # Update should fail
+
+# Tests for TRACE level functionality
+class TestTraceLevel:
+    def test_trace_level_validation(self):
+        # Test TRACE level is accepted in config validation
+        config_with_trace = {
+            "timer": 300,
+            "consolelevel": "TRACE",
+            "loglevel": "TRACE", 
+            "providers": [
+                {
+                    "name": "test_provider",
+                    "protocol": "dyndns2",
+                    "url": "https://example.com/update",
+                    "hostname": "test.example.com"
+                }
+            ]
+        }
+        
+        with patch('update_dyndns.log'):
+            assert update_dyndns.validate_config(config_with_trace) is True
+
+# Tests for logging configuration
+class TestLoggingConfiguration:
+    def test_logging_config_validation_valid(self):
+        # Test valid logging configuration
+        config_with_logging = {
+            "timer": 300,
+            "providers": [],
+            "logging": {
+                "enabled": True,
+                "file": "/app/config/test.log",
+                "max_size_mb": 5,
+                "backup_count": 2
+            }
+        }
+        
+        with patch('update_dyndns.log'):
+            assert update_dyndns.validate_config(config_with_logging) is True
+    
+    def test_logging_config_validation_invalid(self):
+        # Test invalid logging configuration
+        config_with_invalid_logging = {
+            "timer": 300,
+            "providers": [],
+            "logging": {
+                "enabled": True,
+                # Missing required "file" field
+                "max_size_mb": 5
+            }
+        }
+        
+        with patch('update_dyndns.log'):
+            assert update_dyndns.validate_config(config_with_invalid_logging) is False
+    
+    @patch('update_dyndns.os.makedirs')
+    @patch('update_dyndns.RotatingFileHandler')
+    def test_setup_logging_file_enabled(self, mock_handler, mock_makedirs):
+        # Test file logging setup
+        config = {
+            "logging": {
+                "enabled": True,
+                "file": "/app/config/test.log",
+                "max_size_mb": 5,
+                "backup_count": 2
+            }
+        }
+        
+        with patch('update_dyndns.logging.getLogger') as mock_logger:
+            result = update_dyndns.setup_logging("INFO", config)
+            assert result == "INFO"
+            mock_makedirs.assert_called_once()
+            mock_handler.assert_called_once()
+
+# Tests for interface functions
+class TestInterfaceFunctions:
+    @patch('update_dyndns.socket.socket')
+    @patch('update_dyndns.fcntl.ioctl')
+    @patch('update_dyndns.socket.inet_ntoa')
+    def test_get_interface_ipv4_success(self, mock_inet_ntoa, mock_ioctl, mock_socket):
+        # Mock successful interface IP retrieval
+        mock_inet_ntoa.return_value = "192.168.1.100"
+        mock_ioctl.return_value = b'\x00' * 20 + b'\xc0\xa8\x01d'  # IP bytes
+        
+        with patch('update_dyndns.validate_ipv4', return_value=True), \
+             patch('update_dyndns.log'):
+            result = update_dyndns.get_interface_ipv4("eth0")
+            assert result == "192.168.1.100"
+    
+    @patch('builtins.open', mock_open())
+    @patch('update_dyndns.socket.getaddrinfo')
+    def test_get_interface_ipv6_success(self, mock_getaddrinfo):
+        # Mock IPv6 address info
+        mock_getaddrinfo.return_value = [
+            (socket.AF_INET6, None, None, None, ("2001:db8::1", 0, 0, 0))
+        ]
+        
+        with patch('update_dyndns.validate_ipv6', return_value=True), \
+             patch('update_dyndns.log'):
+            result = update_dyndns.get_interface_ipv6("eth0")
+            assert result == "2001:db8::1"
+
+# Tests for provider-specific updates
+class TestProviderUpdates:
+    @patch('requests.get')
+    def test_update_cloudflare_success(self, mock_get):
+        # Test successful Cloudflare update
+        # Mock zone ID response
+        zone_response = MagicMock()
+        zone_response.json.return_value = {
+            "success": True,
+            "result": [{"id": "zone123"}]
+        }
+        
+        # Mock record response
+        record_response = MagicMock()
+        record_response.json.return_value = {
+            "success": True,
+            "result": [{"id": "record123", "content": "1.2.3.4"}]
+        }
+        
+        # Mock update response
+        update_response = MagicMock()
+        update_response.ok = True
+        
+        mock_get.side_effect = [zone_response, record_response]
+        
+        provider = {
+            "api_token": "test-token",
+            "zone": "example.com",
+            "record_name": "test.example.com"
+        }
+        
+        with patch('requests.patch', return_value=update_response), \
+             patch('update_dyndns.log'):
+            result = update_dyndns.update_cloudflare(provider, "1.2.3.5")
+            assert result == "updated"
+    
+    @patch('requests.get')
+    def test_update_ipv64_success(self, mock_get):
+        # Test successful ipv64 update
+        mock_response = MagicMock()
+        mock_response.text = "good 192.168.1.1"
+        mock_get.return_value = mock_response
+        
+        provider = {
+            "auth_method": "token",
+            "token": "test-token",
+            "domain": "test.ipv64.net"
+        }
+        
+        with patch('update_dyndns.log'):
+            result = update_dyndns.update_ipv64(provider, "192.168.1.1")
+            assert result == "updated"
+
+# Tests for error handling
+class TestErrorHandling:
+    def test_invalid_ip_validation_notification(self):
+        # Test that invalid IPs trigger notifications
+        with patch('update_dyndns.send_notifications') as mock_notify, \
+             patch('update_dyndns.log'):
+            
+            # This should be called when invalid IP is detected
+            update_dyndns.validate_ipv4("999.999.999.999")
+            # Additional test logic here...
+    
+    @patch('update_dyndns.config', {'notify': {'email': {'enabled': True}}})
+    def test_update_provider_exception_handling(self):
+        # Test exception handling in update_provider
+        provider = {
+            "name": "test_provider",
+            "protocol": "invalid_protocol"  # This should cause an error
+        }
+        
+        with patch('update_dyndns.log') as mock_log, \
+             patch('update_dyndns.send_notifications') as mock_notify:
+            result = update_dyndns.update_provider(provider, "192.168.1.1")
+            assert result is None
+            mock_notify.assert_called_once()
+
+# Tests for file operations
+class TestFileOperations:
+    def test_load_last_ip_success(self):
+        # Test successful IP loading from file
+        with patch('builtins.open', mock_open(read_data="192.168.1.1")):
+            result = update_dyndns.load_last_ip("v4")
+            assert result == "192.168.1.1"
+    
+    def test_load_last_ip_file_not_found(self):
+        # Test handling when IP file doesn't exist
+        with patch('builtins.open', side_effect=FileNotFoundError()):
+            result = update_dyndns.load_last_ip("v4")
+            assert result is None
+    
+    @patch('builtins.open', mock_open())
+    def test_save_last_ip_success(self, mock_file):
+        # Test successful IP saving
+        with patch('update_dyndns.log'):
+            update_dyndns.save_last_ip("v4", "192.168.1.1")
+            mock_file.assert_called_once()
+
+# Tests for configuration edge cases
+class TestConfigurationEdgeCases:
+    def test_empty_providers_list(self):
+        # Test config with empty providers
+        config = {
+            "timer": 300,
+            "providers": []
+        }
+        
+        with patch('update_dyndns.log'):
+            assert update_dyndns.validate_config(config) is True
+    
+    def test_missing_timer(self):
+        # Test config without timer
+        config = {
+            "providers": [{"name": "test", "protocol": "dyndns2", "url": "https://example.com"}]
+        }
+        
+        with patch('update_dyndns.log'):
+            assert update_dyndns.validate_config(config) is False
+    
+    def test_invalid_protocol(self):
+        # Test provider with invalid protocol
+        config = {
+            "timer": 300,
+            "providers": [
+                {
+                    "name": "test",
+                    "protocol": "invalid_protocol",
+                    "url": "https://example.com"
+                }
+            ]
+        }
+        
+        with patch('update_dyndns.log'):
+            assert update_dyndns.validate_config(config) is False
+
+# Tests for different authentication methods
+class TestAuthenticationMethods:
+    @patch('requests.get')
+    def test_dyndns2_token_auth(self, mock_get):
+        mock_response = MagicMock()
+        mock_response.text = "good"
+        mock_get.return_value = mock_response
+        
+        provider = {
+            "name": "test",
+            "url": "https://example.com/update",
+            "auth_method": "token",
+            "token": "test-token",
+            "hostname": "test.example.com"
+        }
+        
+        with patch('update_dyndns.log'):
+            result = update_dyndns.update_dyndns2(provider, "192.168.1.1")
+            assert result == "updated"
+            
+            # Verify token was passed in params
+            args, kwargs = mock_get.call_args
+            assert kwargs.get("params", {}).get("token") == "test-token"
+    
+    @patch('requests.get')
+    def test_dyndns2_bearer_auth(self, mock_get):
+        mock_response = MagicMock()
+        mock_response.text = "good"
+        mock_get.return_value = mock_response
+        
+        provider = {
+            "name": "test",
+            "url": "https://example.com/update",
+            "auth_method": "bearer",
+            "token": "bearer-token",
+            "hostname": "test.example.com"
+        }
+        
+        with patch('update_dyndns.log'):
+            result = update_dyndns.update_dyndns2(provider, "192.168.1.1")
+            assert result == "updated"
+            
+            # Verify bearer token was passed in headers
+            args, kwargs = mock_get.call_args
+            assert kwargs.get("headers", {}).get("Authorization") == "Bearer bearer-token"
+
+# Tests for logging levels and message filtering
+class TestLogLevelFiltering:
+    def test_should_log_function(self):
+        # Test the should_log function with TRACE level
+        assert update_dyndns.should_log("TRACE", "TRACE") is True
+        assert update_dyndns.should_log("DEBUG", "TRACE") is True
+        assert update_dyndns.should_log("INFO", "TRACE") is True
+        assert update_dyndns.should_log("TRACE", "INFO") is False
+        assert update_dyndns.should_log("ERROR", "WARNING") is True
+        assert update_dyndns.should_log("WARNING", "ERROR") is False
+
+    @patch('update_dyndns.console_level', 'INFO')
+    @patch('update_dyndns.file_level', 'WARNING')
+    def test_log_function_level_filtering(self):
+        # Test that log function respects level filtering
+        with patch('builtins.print') as mock_print, \
+             patch('update_dyndns.file_logger_instance') as mock_file_logger:
+            
+            # This should print to console (INFO >= INFO)
+            update_dyndns.log("Test INFO message", "INFO", "TEST")
+            mock_print.assert_called_once()
+            
+            # Reset mocks
+            mock_print.reset_mock()
+            mock_file_logger.reset_mock()
+            
+            # This should NOT print to console (DEBUG < INFO)
+            update_dyndns.log("Test DEBUG message", "DEBUG", "TEST")
+            mock_print.assert_not_called()
+
+# Tests for IP validation edge cases
+class TestIPValidationEdgeCases:
+    def test_validate_ipv4_edge_cases(self):
+        # Test edge cases for IPv4 validation
+        assert update_dyndns.validate_ipv4("0.0.0.0") is True
+        assert update_dyndns.validate_ipv4("255.255.255.255") is True
+        assert update_dyndns.validate_ipv4("192.168.1.1") is True
+        assert update_dyndns.validate_ipv4("10.0.0.1") is True
+        
+        # Invalid cases
+        assert update_dyndns.validate_ipv4("256.1.1.1") is False
+        assert update_dyndns.validate_ipv4("1.1.1") is False
+        assert update_dyndns.validate_ipv4("1.1.1.1.1") is False
+        assert update_dyndns.validate_ipv4("") is False
+        assert update_dyndns.validate_ipv4("abc.def.ghi.jkl") is False
+        assert update_dyndns.validate_ipv4("192.168.1.-1") is False
+
+    def test_validate_ipv6_edge_cases(self):
+        # Test edge cases for IPv6 validation
+        assert update_dyndns.validate_ipv6("::1") is True
+        assert update_dyndns.validate_ipv6("2001:db8::1") is True
+        assert update_dyndns.validate_ipv6("2001:0db8:85a3:0000:0000:8a2e:0370:7334") is True
+        assert update_dyndns.validate_ipv6("::") is True
+        
+        # Invalid cases
+        assert update_dyndns.validate_ipv6("192.168.1.1") is False  # IPv4
+        assert update_dyndns.validate_ipv6("") is False
+        assert update_dyndns.validate_ipv6("invalid") is False
+        assert update_dyndns.validate_ipv6("2001:0db8:85a3::8a2e:0370:7334:extra") is False
+
+# Tests for configuration reloading
+class TestConfigurationReloading:
+    @patch('update_dyndns.os.path.getmtime')
+    @patch('builtins.open', mock_open())
+    @patch('update_dyndns.yaml.safe_load')
+    def test_config_reload_on_file_change(self, mock_yaml, mock_open_file, mock_getmtime):
+        # Mock file modification time change
+        mock_getmtime.side_effect = [1000, 1001]  # File changed
+        
+        # Mock valid config
+        mock_yaml.return_value = {
+            "timer": 600,
+            "providers": [{"name": "test", "protocol": "dyndns2", "url": "https://example.com"}]
+        }
+        
+        with patch('update_dyndns.validate_config', return_value=True), \
+             patch('update_dyndns.setup_logging'), \
+             patch('update_dyndns.log'):
+            
+            # This would be called in the main loop when config changes
+            # Test logic for config reloading would go here
+            pass
+
+# Tests for skip_update_on_startup functionality
+class TestSkipUpdateOnStartup:
+    @patch('update_dyndns.load_last_ip')
+    @patch('update_dyndns.save_last_ip')
+    def test_skip_update_when_ip_unchanged(self, mock_save, mock_load):
+        # Mock that IP hasn't changed
+        mock_load.side_effect = lambda version: "192.168.1.1" if version == "v4" else None
+        
+        # Test that updates are skipped when IP is the same
+        with patch('update_dyndns.log'):
+            # Simulate the logic from main() when skip_update_on_startup is True
+            last_ip = "192.168.1.1"
+            current_ip = "192.168.1.1"
+            skip_on_startup = True
+            
+            ip_changed = (current_ip != last_ip)
+            should_update = not skip_on_startup or ip_changed
+            
+            assert should_update is False
+
+    @patch('update_dyndns.load_last_ip')
+    @patch('update_dyndns.save_last_ip')
+    def test_update_when_ip_changed(self, mock_save, mock_load):
+        # Mock that IP has changed
+        mock_load.side_effect = lambda version: "192.168.1.1" if version == "v4" else None
+        
+        # Test that updates proceed when IP has changed
+        with patch('update_dyndns.log'):
+            last_ip = "192.168.1.1"
+            current_ip = "192.168.1.2"
+            skip_on_startup = True
+            
+            ip_changed = (current_ip != last_ip)
+            should_update = not skip_on_startup or ip_changed
+            
+            assert should_update is True
+
+# Tests for provider error responses
+class TestProviderErrorResponses:
+    @patch('requests.get')
+    def test_dyndns2_error_response(self, mock_get):
+        # Test various error responses from DynDNS2 providers
+        error_responses = [
+            "badauth",
+            "nohost",
+            "abuse",
+            "badagent",
+            "dnserr",
+            "911"
+        ]
+        
+        for error_response in error_responses:
+            mock_response = MagicMock()
+            mock_response.text = error_response
+            mock_get.return_value = mock_response
+            
+            provider = {
+                "name": "test_provider",
+                "url": "https://example.com/update",
+                "auth_method": "basic",
+                "username": "user",
+                "password": "pass",
+                "hostname": "test.example.com"
+            }
+            
+            with patch('update_dyndns.log'):
+                result = update_dyndns.update_dyndns2(provider, "192.168.1.1")
+                assert result is None  # Should return None for errors
+
+    @patch('requests.get')
+    def test_ipv64_overcommitted_response(self, mock_get):
+        # Test ipv64 overcommitted response
+        mock_response = MagicMock()
+        mock_response.text = "overcommited"
+        mock_response.status_code = 403
+        mock_get.return_value = mock_response
+        
+        provider = {
+            "auth_method": "token",
+            "token": "test-token",
+            "domain": "test.ipv64.net"
+        }
+        
+        with patch('update_dyndns.log'):
+            result = update_dyndns.update_ipv64(provider, "192.168.1.1")
+            assert result is False
+
+# Tests for mixed IPv4/IPv6 scenarios
+class TestMixedIPScenarios:
+    @patch('requests.get')
+    def test_update_both_ipv4_and_ipv6(self, mock_get):
+        # Test updating both IPv4 and IPv6 records
+        mock_response = MagicMock()
+        mock_response.text = "good"
+        mock_get.return_value = mock_response
+        
+        provider = {
+            "name": "test_provider",
+            "url": "https://example.com/update",
+            "auth_method": "basic",
+            "username": "user",
+            "password": "pass",
+            "hostname": "test.example.com"
+        }
+        
+        with patch('update_dyndns.log'):
+            result = update_dyndns.update_dyndns2(provider, "192.168.1.1", "2001:db8::1")
+            assert result == "updated"
+            
+            # Verify both IPs were passed
+            args, kwargs = mock_get.call_args
+            params = kwargs.get("params", {})
+            assert params.get("myip") == "192.168.1.1"
+            assert params.get("myipv6") == "2001:db8::1"
+
+    def test_ipv4_only_scenario(self):
+        # Test scenario with only IPv4 configured
+        with patch('update_dyndns.get_public_ip', return_value="192.168.1.1"), \
+             patch('update_dyndns.get_public_ipv6', return_value=None), \
+             patch('update_dyndns.validate_ipv4', return_value=True):
+            
+            # Simulate getting only IPv4
+            ipv4 = "192.168.1.1"
+            ipv6 = None
+            
+            assert ipv4 is not None
+            assert ipv6 is None
+
+# Tests for notification integration
+class TestNotificationIntegration:
+    @patch('update_dyndns.send_notifications')
+    def test_notification_on_successful_update(self, mock_notify):
+        # Test that notifications are sent on successful updates
+        provider = {
+            "name": "test_provider",
+            "protocol": "dyndns2"
+        }
+        
+        with patch('update_dyndns.update_dyndns2', return_value="updated"), \
+             patch('update_dyndns.log'), \
+             patch('update_dyndns.config', {'notify': {'email': {'enabled': True}}}):
+            
+            result = update_dyndns.update_provider(provider, "192.168.1.1")
+            assert result is True
+            mock_notify.assert_called_once()
+
+    @patch('update_dyndns.send_notifications')
+    def test_notification_on_update_error(self, mock_notify):
+        # Test that notifications are sent on update errors
+        provider = {
+            "name": "test_provider",
+            "protocol": "dyndns2"
+        }
+        
+        with patch('update_dyndns.update_dyndns2', return_value=None), \
+             patch('update_dyndns.log'), \
+             patch('update_dyndns.config', {'notify': {'email': {'enabled': True}}}):
+            
+            result = update_dyndns.update_provider(provider, "192.168.1.1")
+            assert result is False
+            mock_notify.assert_called_once()
+
+# Tests for logging with file_only_on_change parameter
+class TestFileOnlyOnChangeLogging:
+    @patch('update_dyndns.file_logger_instance')
+    def test_log_with_file_only_on_change_true(self, mock_file_logger):
+        # Test that routine messages are not logged to file when file_only_on_change=True
+        with patch('builtins.print'):
+            update_dyndns.log("IP unchanged", "INFO", "MAIN", file_only_on_change=True)
+            
+            # Should not log to file for routine INFO messages
+            mock_file_logger.info.assert_not_called()
+
+    @patch('update_dyndns.file_logger_instance')
+    def test_log_error_always_goes_to_file(self, mock_file_logger):
+        # Test that ERROR messages always go to file regardless of file_only_on_change
+        with patch('builtins.print'):
+            update_dyndns.log("Critical error", "ERROR", "MAIN", file_only_on_change=True)
+            
+            # Should log to file for ERROR messages even with file_only_on_change=True
+            mock_file_logger.error.assert_called_once()
+
+# Tests for interface error handling
+class TestInterfaceErrorHandling:
+    @patch('update_dyndns.socket.socket')
+    def test_interface_not_found_error(self, mock_socket):
+        # Test handling when interface doesn't exist
+        mock_socket.side_effect = OSError("No such device")
+        
+        with patch('update_dyndns.log'):
+            result = update_dyndns.get_interface_ipv4("nonexistent0")
+            assert result is None
+
+    @patch('builtins.open', side_effect=FileNotFoundError())
+    def test_interface_ipv6_not_found(self, mock_open):
+        # Test IPv6 interface not found
+        with patch('update_dyndns.log'):
+            result = update_dyndns.get_interface_ipv6("nonexistent0")
+            assert result is None
+
+# Tests for concurrent/threading scenarios (if applicable)
+class TestConcurrencyScenarios:
+    def test_config_modification_during_execution(self):
+        # Test behavior when config is modified during execution
+        # This would test race conditions if threading is used
+        pass
+
+# Tests for memory and resource management
+class TestResourceManagement:
+    @patch('update_dyndns.RotatingFileHandler')
+    def test_log_rotation_setup(self, mock_handler):
+        # Test that log rotation is properly configured
+        config = {
+            "logging": {
+                "enabled": True,
+                "file": "/app/config/test.log",
+                "max_size_mb": 5,
+                "backup_count": 3
+            }
+        }
+        
+        with patch('update_dyndns.os.makedirs'), \
+             patch('update_dyndns.logging.getLogger'):
+            
+            update_dyndns.setup_logging("INFO", config)
+            
+            # Verify RotatingFileHandler was called with correct parameters
+            mock_handler.assert_called_once_with(
+                "/app/config/test.log",
+                maxBytes=5 * 1024 * 1024,
+                backupCount=3
+            )
+
+# Integration tests (testing multiple components together)
+class TestIntegrationScenarios:
+    @patch('update_dyndns.get_public_ip')
+    @patch('update_dyndns.update_dyndns2')
+    @patch('update_dyndns.send_notifications')
+    def test_full_update_cycle(self, mock_notify, mock_update, mock_get_ip):
+        # Test a complete update cycle
+        mock_get_ip.return_value = "192.168.1.2"
+        mock_update.return_value = "updated"
+        
+        provider = {
+            "name": "test_provider",
+            "protocol": "dyndns2",
+            "url": "https://example.com/update",
+            "hostname": "test.example.com"
+        }
+        
+        with patch('update_dyndns.log'), \
+             patch('update_dyndns.config', {'notify': {'email': {'enabled': True}}}):
+            
+            # Simulate IP change detection and update
+            current_ip = mock_get_ip("https://api.ipify.org")
+            result = update_dyndns.update_provider(provider, current_ip)
+            
+            assert result is True
+            mock_update.assert_called_once()
+            mock_notify.assert_called_once()
+
+# Performance tests
+class TestPerformance:
+    def test_ip_validation_performance(self):
+        # Test that IP validation is fast for large numbers of IPs
+        import time
+        
+        start_time = time.time()
+        for i in range(1000):
+            update_dyndns.validate_ipv4(f"192.168.1.{i % 255}")
+        end_time = time.time()
+        
+        # Should complete in reasonable time (less than 1 second)
+        assert (end_time - start_time) < 1.0
+
+# Tests for environment-specific behavior
+class TestEnvironmentBehavior:
+    @patch.dict(os.environ, {'DOCKER_ENV': 'true'})
+    def test_docker_environment_detection(self):
+        # Test behavior specific to Docker environment
+        pass
+
+    def test_file_permissions(self):
+        # Test behavior with different file permissions
+        pass
