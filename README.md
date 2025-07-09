@@ -492,6 +492,7 @@ The enhanced client now features **bulletproof network resilience**:
 #### 🌐 Multiple IP Detection Services
 Instead of relying on a single service, the client tries multiple services in sequence:
 
+**IPv4 Services:**
 ```yaml
 ip_services:
   - "https://api.ipify.org"           # Primary service
@@ -500,6 +501,16 @@ ip_services:
   - "https://checkip.amazonaws.com"   # Backup 3
   - "https://ipecho.net/plain"        # Backup 4
   - "https://myexternalip.com/raw"    # Backup 5
+```
+
+**IPv6 Services:**
+```yaml
+ip6_services:
+  - "https://api64.ipify.org"         # Primary IPv6 service
+  - "https://ifconfig.me/ip"          # Backup 1 (supports IPv6)
+  - "https://icanhazip.com"           # Backup 2 (auto IPv6 detection)
+  - "https://v6.ident.me"            # Backup 3 (IPv6-specific)
+  - "https://ipv6.icanhazip.com"     # Backup 4 (IPv6-specific)
 ```
 
 #### ⏱️ Smart Retry Strategy

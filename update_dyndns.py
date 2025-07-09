@@ -765,6 +765,48 @@ def get_public_ip_with_fallback(config):
     log("❌ Alle IP-Services fehlgeschlagen", "ERROR", "NETWORK")
     return None
 
+def get_public_ipv6_with_fallback(config):
+    """
+    Versucht die öffentliche IPv6 über mehrere Services zu ermitteln
+    
+    Args:
+        config: Konfigurationsdictionary mit ip6_services Liste
+        
+    Returns:
+        IPv6-Adresse als String oder None bei Fehlschlag
+    """
+    # Standard IPv6-Services + Backup-Adressen aus Config
+    ip6_services = config.get('ip6_services', [
+        config.get('ip6_service', 'https://api64.ipify.org'),  # Bestehender Service als Fallback
+        "https://ifconfig.me/ip",           # Unterstützt auch IPv6
+        "https://icanhazip.com",            # Automatische IPv6-Erkennung
+        "https://v6.ident.me",              # IPv6-spezifisch
+        "https://ipv6.icanhazip.com"        # IPv6-spezifisch
+    ])
+    
+    log(f"Versuche IPv6-Ermittlung über {len(ip6_services)} Services...", "INFO", "NETWORK")
+    
+    for i, service in enumerate(ip6_services, 1):
+        try:
+            log(f"IPv6 Versuch {i}/{len(ip6_services)}: {service}", "DEBUG", "NETWORK")
+            
+            # Verwende bestehende get_public_ipv6 Funktion
+            ip6 = get_public_ipv6(service)
+            
+            if ip6 and validate_ipv6(ip6):
+                log(f"✅ IPv6 erfolgreich ermittelt von {service}: {ip6}", "INFO", "NETWORK")
+                return ip6
+            else:
+                log(f"⚠️ Ungültige IPv6 von {service}: {ip6}", "WARNING", "NETWORK")
+                
+        except Exception as e:
+            log(f"❌ IPv6 Service {service} fehlgeschlagen: {str(e)}", "WARNING", "NETWORK")
+            continue
+    
+    # Alle Services fehlgeschlagen
+    log("❌ Alle IPv6-Services fehlgeschlagen", "ERROR", "NETWORK")
+    return None
+
 def get_interface_ip_fallback(config):
     """
     Fallback: Versucht IP vom konfigurierten Interface zu ermitteln
@@ -810,6 +852,36 @@ def get_interface_ip_fallback(config):
     
     return None
 
+def get_interface_ipv6_fallback(config):
+    """
+    Fallback: Versucht IPv6 vom konfigurierten Interface zu ermitteln
+    
+    Args:
+        config: Konfigurationsdictionary
+        
+    Returns:
+        Interface-IPv6 oder None
+    """
+    interface6 = config.get('interface6')
+    
+    if not interface6:
+        log("Kein IPv6-Interface für Fallback konfiguriert", "DEBUG", "NETWORK")
+        return None
+    
+    try:
+        log(f"IPv6-Fallback: Versuche IPv6 von Interface {interface6}...", "INFO", "NETWORK")
+        
+        # Verwende bestehende get_interface_ipv6 Funktion
+        ip6 = get_interface_ipv6(interface6)
+        if ip6 and validate_ipv6(ip6):
+            log(f"✅ Interface-IPv6 ermittelt: {ip6}", "INFO", "NETWORK")
+            return ip6
+            
+    except Exception as e:
+        log(f"❌ IPv6-Interface-Fallback fehlgeschlagen: {str(e)}", "WARNING", "NETWORK")
+    
+    return None
+
 def get_current_ip_resilient(config):
     """
     Resiliente IP-Ermittlung mit mehreren Fallback-Strategien
@@ -836,6 +908,34 @@ def get_current_ip_resilient(config):
     
     # 3. Alle Methoden fehlgeschlagen
     log("❌ Alle IP-Ermittlungsmethoden fehlgeschlagen", "ERROR", "NETWORK")
+    return None
+
+def get_current_ipv6_resilient(config):
+    """
+    Resiliente IPv6-Ermittlung mit mehreren Fallback-Strategien
+    
+    Args:
+        config: Konfigurationsdictionary
+        
+    Returns:
+        Aktuelle IPv6-Adresse oder None
+    """
+    log("🔍 Starte resiliente IPv6-Ermittlung...", "TRACE", "NETWORK")
+    
+    # 1. Versuche externe IPv6-Services
+    ip6 = get_public_ipv6_with_fallback(config)
+    if ip6:
+        return ip6
+    
+    # 2. Fallback auf Interface-IPv6 (nur wenn aktiviert)
+    if config.get('enable_interface_fallback', True):
+        log("🔄 Fallback auf Interface-IPv6...", "INFO", "NETWORK")
+        ip6 = get_interface_ipv6_fallback(config)
+        if ip6:
+            return ip6
+    
+    # 3. Alle Methoden fehlgeschlagen
+    log("❌ Alle IPv6-Ermittlungsmethoden fehlgeschlagen", "ERROR", "NETWORK")
     return None
 
 def handle_no_ip_available(consecutive_failures, config):
@@ -1069,11 +1169,11 @@ def main():
                 current_ip = get_current_ip_resilient(config)
                 
             current_ip6 = None
-            if ip6_service:
+            if config.get('ip6_service') or config.get('ip6_services'):
                 try:
-                    current_ip6 = get_public_ipv6(ip6_service)
+                    current_ip6 = get_current_ipv6_resilient(config)
                 except Exception as e:
-                    log(f"IPv6 Service Fehler nach Config-Reload: {e}", "WARNING", "NETWORK")
+                    log(f"IPv6 Resilient Service Fehler nach Config-Reload: {e}", "WARNING", "NETWORK")
             elif ip6_interface:
                 try:
                     current_ip6 = get_interface_ipv6(ip6_interface)
@@ -1102,18 +1202,10 @@ def main():
                 # Verwende resiliente IP-Ermittlung
                 current_ip = get_current_ip_resilient(config)
                 
-                # IPv6 resilient (optional)
+                # IPv6 resilient 
                 current_ip6 = None
-                if ip6_service:
-                    try:
-                        current_ip6 = get_public_ipv6(ip6_service)
-                    except Exception as e:
-                        log(f"IPv6 Fehler: {e}", "WARNING", "NETWORK")
-                elif ip6_interface:
-                    try:
-                        current_ip6 = get_interface_ipv6(ip6_interface)
-                    except Exception as e:
-                        log(f"IPv6 Interface Fehler: {e}", "WARNING", "NETWORK")
+                if config.get('ip6_service') or config.get('ip6_services') or config.get('interface6'):
+                    current_ip6 = get_current_ipv6_resilient(config)
                         
                 if not current_ip and not current_ip6:
                     # Keine IP verfügbar - resiliente Behandlung
@@ -1161,11 +1253,11 @@ def main():
                         current_ip = None
                         
                 current_ip6 = None
-                if ip6_service:
+                if config.get('ip6_service') or config.get('ip6_services'):
                     try:
-                        current_ip6 = get_public_ipv6(ip6_service)
+                        current_ip6 = get_current_ipv6_resilient(config)
                     except Exception as e:
-                        log(f"IPv6 Service Fehler: {e}", "WARNING", "NETWORK")
+                        log(f"IPv6 Resilient Service Fehler: {e}", "WARNING", "NETWORK")
                 elif ip6_interface:
                     try:
                         current_ip6 = get_interface_ipv6(ip6_interface)

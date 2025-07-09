@@ -418,6 +418,7 @@ Der erweiterte Client bietet nun **kugelsichere Netzwerk-Resilienz**:
 #### 🌐 Mehrere IP-Erkennungsdienste
 Anstatt sich auf einen einzigen Service zu verlassen, versucht der Client mehrere Services nacheinander:
 
+**IPv4-Services:**
 ```yaml
 ip_services:
   - "https://api.ipify.org"           # Primärer Service
@@ -426,6 +427,16 @@ ip_services:
   - "https://checkip.amazonaws.com"   # Backup 3
   - "https://ipecho.net/plain"        # Backup 4
   - "https://myexternalip.com/raw"    # Backup 5
+```
+
+**IPv6-Services:**
+```yaml
+ip6_services:
+  - "https://api64.ipify.org"         # Primärer IPv6-Service
+  - "https://ifconfig.me/ip"          # Backup 1 (unterstützt IPv6)
+  - "https://icanhazip.com"           # Backup 2 (automatische IPv6-Erkennung)
+  - "https://v6.ident.me"            # Backup 3 (IPv6-spezifisch)
+  - "https://ipv6.icanhazip.com"     # Backup 4 (IPv6-spezifisch)
 ```
 
 #### ⏱️ Intelligente Retry-Strategie

@@ -16,7 +16,15 @@ ip_services:
   - "https://ipecho.net/plain"        # Backup 4
   - "https://myexternalip.com/raw"    # Backup 5
 
-# Netzwerk-Fehlerbehandlung
+# Mehrere IPv6-Ermittlungsservices (werden der Reihe nach ausprobiert)
+ip6_services:
+  - "https://api64.ipify.org"         # Standard IPv6-Service
+  - "https://ifconfig.me/ip"          # Backup 1 (unterstützt auch IPv6)
+  - "https://icanhazip.com"           # Backup 2 (automatische IPv6-Erkennung)
+  - "https://v6.ident.me"            # Backup 3 (IPv6-spezifisch)
+  - "https://ipv6.icanhazip.com"     # Backup 4 (IPv6-spezifisch)
+
+# Netzwerk-Fehlerbehandlung (gilt für IPv4 und IPv6)
 network_retry_interval: 60        # Wartezeit nach Fehlschlag (Sekunden) - Standard: 1 Minute
 max_failures_before_backoff: 5    # Anzahl Fehler vor Exponential Backoff
 backoff_multiplier: 2.0           # Backoff-Multiplikator (2.0 = Verdopplung der Wartezeit)
