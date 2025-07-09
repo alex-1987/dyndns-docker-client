@@ -1187,7 +1187,7 @@ def main():
             for provider in providers:
                 result = update_provider(provider, current_ip, current_ip6)
                 section = provider.get('name', 'PROVIDER').upper()
-                if not (result or result == "nochg"):
+                if not result:  # update_provider returns True for success (updated/nochg), False for failure
                     log(f"Provider '{provider.get('name')}' could not be updated after config change.", "WARNING", section=section)
                     failed_providers.append(provider)
             last_ip = current_ip
@@ -1242,8 +1242,7 @@ def main():
                         current_ip = get_public_ip(ip_service)
                     except Exception as e:
                         log(f"❌ IP-Service Fehler: {e}", "ERROR", "NETWORK")
-                        # Aktiviere resilient mode bei Fehlern
-                        resilient_mode = True
+                        # Versuche resiliente IP-Ermittlung, aber aktiviere resilient_mode noch nicht
                         current_ip = get_current_ip_resilient(config)
                 elif ip_interface:
                     try:
@@ -1303,7 +1302,7 @@ def main():
                         try:
                             result = update_provider(provider, current_ip, current_ip6)
                             section = provider.get('name', 'PROVIDER').upper()
-                            if not (result or result == "nochg"):
+                            if not result:  # update_provider returns True for success (updated/nochg), False for failure
                                 failed_providers.append(provider)
                         except Exception as e:
                             log(f"Provider update failed: {provider.get('name')} - {e}", "ERROR", "PROVIDER")
