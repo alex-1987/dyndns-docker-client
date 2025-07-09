@@ -1,7 +1,0 @@
-pytest>=7.3.1
-pytest-mock>=3.10.0
-pytest-cov>=4.1.0
-requests>=2.28.0  # Die Test-Abhängigkeiten müssen auch hier aufgeführt sein
-pyyaml>=6.0       # Für Config-Tests
-watchdog>=3.0.0   # Für Hot-Reload Tests
-jsonschema>=4.0.0 # Für Schema-Validierungstests
