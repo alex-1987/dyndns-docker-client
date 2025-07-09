@@ -722,6 +722,158 @@ def validate_ipv6(ip):
     except:
         return False
 
+def get_public_ip_with_fallback(config):
+    """
+    Versucht die öffentliche IP über mehrere Services zu ermitteln
+    
+    Args:
+        config: Konfigurationsdictionary mit ip_services Liste
+        
+    Returns:
+        IP-Adresse als String oder None bei Fehlschlag
+    """
+    # Standard IP-Services + Backup-Adressen aus Config
+    ip_services = config.get('ip_services', [
+        config.get('ip_service', 'https://api.ipify.org'),  # Bestehender Service als Fallback
+        "https://ifconfig.me/ip",
+        "https://icanhazip.com",
+        "https://checkip.amazonaws.com",
+        "https://ipecho.net/plain",
+        "https://myexternalip.com/raw"
+    ])
+    
+    log(f"Versuche IP-Ermittlung über {len(ip_services)} Services...", "INFO", "NETWORK")
+    
+    for i, service in enumerate(ip_services, 1):
+        try:
+            log(f"Versuch {i}/{len(ip_services)}: {service}", "DEBUG", "NETWORK")
+            
+            # Verwende bestehende get_public_ip Funktion
+            ip = get_public_ip(service)
+            
+            if ip and validate_ipv4(ip):
+                log(f"✅ IP erfolgreich ermittelt von {service}: {ip}", "INFO", "NETWORK")
+                return ip
+            else:
+                log(f"⚠️ Ungültige IP von {service}: {ip}", "WARNING", "NETWORK")
+                
+        except Exception as e:
+            log(f"❌ Service {service} fehlgeschlagen: {str(e)}", "WARNING", "NETWORK")
+            continue
+    
+    # Alle Services fehlgeschlagen
+    log("❌ Alle IP-Services fehlgeschlagen", "ERROR", "NETWORK")
+    return None
+
+def get_interface_ip_fallback(config):
+    """
+    Fallback: Versucht IP vom konfigurierten Interface zu ermitteln
+    
+    Args:
+        config: Konfigurationsdictionary
+        
+    Returns:
+        Interface-IP oder None
+    """
+    interface = config.get('interface')
+    
+    if not interface:
+        log("Kein Interface für Fallback konfiguriert", "DEBUG", "NETWORK")
+        return None
+    
+    try:
+        log(f"Fallback: Versuche IP von Interface {interface}...", "INFO", "NETWORK")
+        
+        # Verwende bestehende get_interface_ipv4 Funktion
+        ip = get_interface_ipv4(interface)
+        if ip and validate_ipv4(ip):
+            log(f"✅ Interface-IP ermittelt: {ip}", "INFO", "NETWORK")
+            return ip
+            
+    except Exception as e:
+        log(f"❌ Interface-Fallback fehlgeschlagen: {str(e)}", "WARNING", "NETWORK")
+    
+    # Alternative: Über socket-Bibliothek
+    try:
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        
+        if ip and validate_ipv4(ip) and not ip.startswith('127.'):
+            log(f"✅ Socket-Fallback IP: {ip}", "INFO", "NETWORK")
+            return ip
+            
+    except Exception as e:
+        log(f"❌ Socket-Fallback fehlgeschlagen: {str(e)}", "WARNING", "NETWORK")
+    
+    return None
+
+def get_current_ip_resilient(config):
+    """
+    Resiliente IP-Ermittlung mit mehreren Fallback-Strategien
+    
+    Args:
+        config: Konfigurationsdictionary
+        
+    Returns:
+        Aktuelle IP-Adresse oder None
+    """
+    log("🔍 Starte resiliente IP-Ermittlung...", "TRACE", "NETWORK")
+    
+    # 1. Versuche externe IP-Services
+    ip = get_public_ip_with_fallback(config)
+    if ip:
+        return ip
+    
+    # 2. Fallback auf Interface-IP (nur wenn aktiviert)
+    if config.get('enable_interface_fallback', True):
+        log("🔄 Fallback auf Interface-IP...", "INFO", "NETWORK")
+        ip = get_interface_ip_fallback(config)
+        if ip:
+            return ip
+    
+    # 3. Alle Methoden fehlgeschlagen
+    log("❌ Alle IP-Ermittlungsmethoden fehlgeschlagen", "ERROR", "NETWORK")
+    return None
+
+def handle_no_ip_available(consecutive_failures, config):
+    """
+    Behandelt den Fall, dass keine IP ermittelt werden konnte
+    
+    Args:
+        consecutive_failures: Anzahl aufeinanderfolgender Fehler
+        config: Konfigurationsdictionary
+        
+    Returns:
+        Tuple: (neue consecutive_failures, Wartezeit in Sekunden)
+    """
+    consecutive_failures += 1
+    
+    # Basis-Wartezeit (Standard: 60 Sekunden)
+    base_wait_time = config.get('network_retry_interval', 60)
+    
+    # Exponential Backoff nach mehreren Fehlern
+    max_failures_before_backoff = config.get('max_failures_before_backoff', 5)
+    
+    if consecutive_failures <= max_failures_before_backoff:
+        wait_time = base_wait_time
+        log(f"⚠️ Keine IP verfügbar (Fehler #{consecutive_failures}). Warte {wait_time}s...", 
+            "WARNING", "NETWORK")
+    else:
+        # Exponential Backoff: 60s, 120s, 240s, max 600s (10 Min)
+        backoff_multiplier = config.get('backoff_multiplier', 2.0)
+        max_wait_time = config.get('max_wait_time', 600)
+        
+        backoff_factor = min(consecutive_failures - max_failures_before_backoff, 4)
+        wait_time = min(base_wait_time * (backoff_multiplier ** backoff_factor), max_wait_time)
+        
+        log(f"⚠️ Anhaltende Netzwerkprobleme (Fehler #{consecutive_failures}). "
+            f"Exponential Backoff: Warte {wait_time}s...", "WARNING", "NETWORK")
+    
+    return consecutive_failures, wait_time
+
 def main():
     global config, log_level, console_level
     config_path = 'config/config.yaml'
@@ -820,8 +972,14 @@ def main():
         test_ip6 = None
     
     if not test_ip and not test_ip6:
-        log("No valid IP address could be determined. Program will exit.", "CRITICAL")
-        sys.exit(1)
+        # Resilientes Verhalten: Statt Programm zu beenden, Fehler loggen und weiter versuchen
+        log("⚠️ Keine gültige IP-Adresse konnte ermittelt werden. Aktiviere resilientes Netzwerkverhalten...", "WARNING", "MAIN")
+        # Setze flag für resiliente Hauptschleife
+        resilient_mode = True
+        test_ip = None
+        test_ip6 = None
+    else:
+        resilient_mode = False
     
     # --- PATCH: skip_update_on_startup ---
     skip_on_startup = config.get("skip_update_on_startup", False)
@@ -892,18 +1050,35 @@ def main():
             providers = config['providers']
             last_config_mtime = current_mtime
             
-            # Get current IPs using updated configuration
+            # Get current IPs using updated configuration with resilient handling
             current_ip = None
             if ip_service:
-                current_ip = get_public_ip(ip_service)
+                try:
+                    current_ip = get_public_ip(ip_service)
+                except Exception as e:
+                    log(f"❌ IP-Service Fehler nach Config-Reload: {e}", "ERROR", "NETWORK")
+                    current_ip = get_current_ip_resilient(config)
             elif ip_interface:
-                current_ip = get_interface_ipv4(ip_interface)
+                try:
+                    current_ip = get_interface_ipv4(ip_interface)
+                except Exception as e:
+                    log(f"❌ Interface Fehler nach Config-Reload: {e}", "ERROR", "NETWORK")
+                    current_ip = get_current_ip_resilient(config)
+            else:
+                # Kein Service/Interface konfiguriert - verwende resiliente Methode
+                current_ip = get_current_ip_resilient(config)
                 
             current_ip6 = None
             if ip6_service:
-                current_ip6 = get_public_ipv6(ip6_service)
+                try:
+                    current_ip6 = get_public_ipv6(ip6_service)
+                except Exception as e:
+                    log(f"IPv6 Service Fehler nach Config-Reload: {e}", "WARNING", "NETWORK")
             elif ip6_interface:
-                current_ip6 = get_interface_ipv6(ip6_interface)
+                try:
+                    current_ip6 = get_interface_ipv6(ip6_interface)
+                except Exception as e:
+                    log(f"IPv6 Interface Fehler nach Config-Reload: {e}", "WARNING", "NETWORK")
             if current_ip:
                 log(f"Current public IP: {current_ip}", "TRACE", section="MAIN")
             if current_ip6:
@@ -921,24 +1096,92 @@ def main():
             log(f"Next run in {timer} seconds...", "TRACE", section="MAIN")
             continue
 
-        # Timer-based update as usual
+        # Timer-based update with resilient network handling
         if elapsed >= timer:
-            # Get current IPs using current configuration
-            current_ip = None
-            if ip_service:
-                current_ip = get_public_ip(ip_service)
-            elif ip_interface:
-                current_ip = get_interface_ipv4(ip_interface)
+            if resilient_mode:
+                # Verwende resiliente IP-Ermittlung
+                current_ip = get_current_ip_resilient(config)
                 
-            current_ip6 = None
-            if ip6_service:
-                current_ip6 = get_public_ipv6(ip6_service)
-            elif ip6_interface:
-                current_ip6 = get_interface_ipv6(ip6_interface)
+                # IPv6 resilient (optional)
+                current_ip6 = None
+                if ip6_service:
+                    try:
+                        current_ip6 = get_public_ipv6(ip6_service)
+                    except Exception as e:
+                        log(f"IPv6 Fehler: {e}", "WARNING", "NETWORK")
+                elif ip6_interface:
+                    try:
+                        current_ip6 = get_interface_ipv6(ip6_interface)
+                    except Exception as e:
+                        log(f"IPv6 Interface Fehler: {e}", "WARNING", "NETWORK")
+                        
+                if not current_ip and not current_ip6:
+                    # Keine IP verfügbar - resiliente Behandlung
+                    if not hasattr(main, 'consecutive_failures'):
+                        main.consecutive_failures = 0
+                    
+                    main.consecutive_failures, wait_time = handle_no_ip_available(main.consecutive_failures, config)
+                    
+                    log("🔄 Programm läuft weiter trotz Netzwerkproblemen...", "INFO", "MAIN")
+                    
+                    # Warte entsprechend der Backoff-Strategie
+                    elapsed = 0
+                    # Überschreibe timer temporär für Backoff
+                    original_timer = timer
+                    timer = wait_time
+                    log(f"⏳ Nächster IP-Versuch in {timer} Sekunden...", "TRACE", "MAIN")
+                    continue
+                else:
+                    # IP erfolgreich ermittelt - Reset failure counter
+                    if hasattr(main, 'consecutive_failures') and main.consecutive_failures > 0:
+                        log(f"✅ Netzwerk wiederhergestellt nach {main.consecutive_failures} Fehlern", "INFO", "NETWORK")
+                        main.consecutive_failures = 0
+                    
+                    # Resilient mode deaktivieren wenn wir wieder IPs haben
+                    resilient_mode = False
+                    
+                    # Timer auf ursprünglichen Wert zurücksetzen
+                    timer = config.get('timer', 300)
+            else:
+                # Normale IP-Ermittlung
+                current_ip = None
+                if ip_service:
+                    try:
+                        current_ip = get_public_ip(ip_service)
+                    except Exception as e:
+                        log(f"❌ IP-Service Fehler: {e}", "ERROR", "NETWORK")
+                        # Aktiviere resilient mode bei Fehlern
+                        resilient_mode = True
+                        current_ip = get_current_ip_resilient(config)
+                elif ip_interface:
+                    try:
+                        current_ip = get_interface_ipv4(ip_interface)
+                    except Exception as e:
+                        log(f"❌ Interface Fehler: {e}", "ERROR", "NETWORK")
+                        current_ip = None
+                        
+                current_ip6 = None
+                if ip6_service:
+                    try:
+                        current_ip6 = get_public_ipv6(ip6_service)
+                    except Exception as e:
+                        log(f"IPv6 Service Fehler: {e}", "WARNING", "NETWORK")
+                elif ip6_interface:
+                    try:
+                        current_ip6 = get_interface_ipv6(ip6_interface)
+                    except Exception as e:
+                        log(f"IPv6 Interface Fehler: {e}", "WARNING", "NETWORK")
+                
+                # Fallback zu resilient mode wenn keine IP ermittelt werden konnte
+                if not current_ip and not current_ip6:
+                    log("🔄 Aktiviere resilientes Netzwerkverhalten aufgrund von Fehlern...", "WARNING", "MAIN")
+                    resilient_mode = True
+                    continue
                 
             # Check for IP change or failed providers
             ip_changed = (current_ip != last_ip) if current_ip is not None else False
             ip6_changed = (current_ip6 != last_ip6) if current_ip6 is not None else False
+            
             # Log current IPs: INFO if changed, TRACE if unchanged
             if current_ip:
                 if ip_changed:
@@ -950,21 +1193,36 @@ def main():
                     log(f"Current public IPv6: {current_ip6}", "INFO", section="MAIN")
                 else:
                     log(f"Current public IPv6: {current_ip6}", "TRACE", section="MAIN")
+                    
+            # Perform updates if needed
             if ip_changed or ip6_changed or failed_providers:
                 if ip_changed:
                     log(f"New IP detected: {current_ip} (previous: {last_ip}) – update will be performed.", section="MAIN")
                 if ip6_changed:
                     log(f"New IPv6 detected: {current_ip6} (previous: {last_ip6}) – update will be performed.", section="MAIN")
-                # Check all providers, always retry failed providers!
+                    
+                # Update all providers (retry failed providers always)
                 retry_providers = failed_providers.copy()
                 failed_providers = []
+                
                 for provider in providers:
                     # Retry if provider was in failed_providers or IP changed
                     if provider in retry_providers or ip_changed or ip6_changed:
-                        result = update_provider(provider, current_ip, current_ip6)
-                        section = provider.get('name', 'PROVIDER').upper()
-                        if not (result or result == "nochg"):
+                        try:
+                            result = update_provider(provider, current_ip, current_ip6)
+                            section = provider.get('name', 'PROVIDER').upper()
+                            if not (result or result == "nochg"):
+                                failed_providers.append(provider)
+                        except Exception as e:
+                            log(f"Provider update failed: {provider.get('name')} - {e}", "ERROR", "PROVIDER")
                             failed_providers.append(provider)
+                            
+                # Save last known IPs
+                if current_ip:
+                    save_last_ip("v4", current_ip)
+                if current_ip6:
+                    save_last_ip("v6", current_ip6)
+                    
                 last_ip = current_ip
                 last_ip6 = current_ip6
                 elapsed = 0

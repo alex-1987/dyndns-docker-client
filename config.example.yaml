@@ -1,5 +1,34 @@
-# Example configuration for DynDNS Docker Client
+# Example configuration for DynDNS Docker Client with Network Resilience
 # Copy this file to config/config.yaml and adjust it to your needs!
+
+# =============================================================================
+# NETZWERK-RESILIENZ-KONFIGURATION (NEU!)
+# =============================================================================
+# Diese Einstellungen sorgen dafür, dass das Programm auch bei Netzwerkproblemen
+# weiterläuft und nicht beendet wird
+
+# Mehrere IP-Ermittlungsservices (werden der Reihe nach ausprobiert)
+ip_services:
+  - "https://api.ipify.org"           # Standard-Service (bisheriger Default)
+  - "https://ifconfig.me/ip"          # Backup 1
+  - "https://icanhazip.com"           # Backup 2  
+  - "https://checkip.amazonaws.com"   # Backup 3
+  - "https://ipecho.net/plain"        # Backup 4
+  - "https://myexternalip.com/raw"    # Backup 5
+
+# Netzwerk-Fehlerbehandlung
+network_retry_interval: 60        # Wartezeit nach Fehlschlag (Sekunden) - Standard: 1 Minute
+max_failures_before_backoff: 5    # Anzahl Fehler vor Exponential Backoff
+backoff_multiplier: 2.0           # Backoff-Multiplikator (2.0 = Verdopplung der Wartezeit)
+max_wait_time: 600                # Maximale Wartezeit (10 Minuten)
+error_wait_time: 30               # Wartezeit nach unerwarteten Fehlern
+
+# Interface-Fallback (falls alle externen Services fehlschlagen)
+enable_interface_fallback: true   # Interface-IP als Fallback verwenden
+
+# =============================================================================
+# BASIS-KONFIGURATION
+# =============================================================================
 
 # Interval in seconds for IP checks (e.g. every 5 minutes)
 timer: 300
