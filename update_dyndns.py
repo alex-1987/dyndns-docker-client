@@ -8,7 +8,10 @@ from notify import send_notifications
 import socket
 import subprocess
 import re
-import fcntl
+try:
+    import fcntl
+except ImportError:
+    fcntl = None  # Windows doesn't have fcntl
 import struct
 import array
 from logging.handlers import RotatingFileHandler
@@ -624,11 +627,12 @@ def get_interface_ipv4(interface_name):
         # 0x8915 is SIOCGIFADDR in Linux
         ifreq = struct.pack('256s', interface_name[:15].encode('utf-8'))
         try:
-            info = fcntl.ioctl(sock.fileno(), 0x8915, ifreq)
-            ip = socket.inet_ntoa(info[20:24])
-            if validate_ipv4(ip):
-                log(f"Found IPv4 address {ip} on interface '{interface_name}'", "INFO", section="INTERFACE")
-                return ip
+            if fcntl:  # Only use fcntl on Linux/Unix systems
+                info = fcntl.ioctl(sock.fileno(), 0x8915, ifreq)
+                ip = socket.inet_ntoa(info[20:24])
+                if validate_ipv4(ip):
+                    log(f"Found IPv4 address {ip} on interface '{interface_name}'", "INFO", section="INTERFACE")
+                    return ip
         except OSError:
             pass  # Fall through to alternative method
         
@@ -732,15 +736,31 @@ def get_public_ip_with_fallback(config):
     Returns:
         IP-Adresse als String oder None bei Fehlschlag
     """
-    # Standard IP-Services + Backup-Adressen aus Config
-    ip_services = config.get('ip_services', [
-        config.get('ip_service', 'https://api.ipify.org'),  # Bestehender Service als Fallback
-        "https://ifconfig.me/ip",
-        "https://icanhazip.com",
-        "https://checkip.amazonaws.com",
-        "https://ipecho.net/plain",
-        "https://myexternalip.com/raw"
-    ])
+    # Get IP services from config - support both singular and plural forms
+    ip_services = config.get('ip_services', [])
+    if not ip_services:
+        # If no ip_services list, use ip_service (singular) as first option
+        ip_service = config.get('ip_service', 'https://api.ipify.org')
+        ip_services = [
+            ip_service,
+            "https://ifconfig.me/ip",
+            "https://icanhazip.com",
+            "https://checkip.amazonaws.com",
+            "https://ipecho.net/plain",
+            "https://myexternalip.com/raw"
+        ]
+    else:
+        # If ip_services is provided, add fallback services if not already included
+        fallback_services = [
+            "https://ifconfig.me/ip",
+            "https://icanhazip.com", 
+            "https://checkip.amazonaws.com",
+            "https://ipecho.net/plain",
+            "https://myexternalip.com/raw"
+        ]
+        for service in fallback_services:
+            if service not in ip_services:
+                ip_services.append(service)
     
     log(f"Versuche IP-Ermittlung über {len(ip_services)} Services...", "INFO", "NETWORK")
     
@@ -775,14 +795,29 @@ def get_public_ipv6_with_fallback(config):
     Returns:
         IPv6-Adresse als String oder None bei Fehlschlag
     """
-    # Standard IPv6-Services + Backup-Adressen aus Config
-    ip6_services = config.get('ip6_services', [
-        config.get('ip6_service', 'https://api64.ipify.org'),  # Bestehender Service als Fallback
-        "https://ifconfig.me/ip",           # Unterstützt auch IPv6
-        "https://icanhazip.com",            # Automatische IPv6-Erkennung
-        "https://v6.ident.me",              # IPv6-spezifisch
-        "https://ipv6.icanhazip.com"        # IPv6-spezifisch
-    ])
+    # Get IPv6 services from config - support both singular and plural forms
+    ip6_services = config.get('ip6_services', [])
+    if not ip6_services:
+        # If no ip6_services list, use ip6_service (singular) as first option
+        ip6_service = config.get('ip6_service', 'https://api64.ipify.org')
+        ip6_services = [
+            ip6_service,
+            "https://ifconfig.me/ip",           # Unterstützt auch IPv6
+            "https://icanhazip.com",            # Automatische IPv6-Erkennung
+            "https://v6.ident.me",              # IPv6-spezifisch
+            "https://ipv6.icanhazip.com"        # IPv6-spezifisch
+        ]
+    else:
+        # If ip6_services is provided, add fallback services if not already included
+        fallback_services = [
+            "https://ifconfig.me/ip",
+            "https://icanhazip.com",
+            "https://v6.ident.me",
+            "https://ipv6.icanhazip.com"
+        ]
+        for service in fallback_services:
+            if service not in ip6_services:
+                ip6_services.append(service)
     
     log(f"Versuche IPv6-Ermittlung über {len(ip6_services)} Services...", "INFO", "NETWORK")
     
@@ -1020,27 +1055,39 @@ def main():
         log("Configuration invalid. Program will exit.", "CRITICAL")
         sys.exit(1)
     timer = config.get('timer', 300)
-    ip_service = config.get('ip_service', None)
-    ip_interface = config.get('interface', None)
-    ip6_service = config.get('ip6_service', None)
-    ip6_interface = config.get('interface6', None)
     providers = config['providers']
 
-    # Get IP configuration method
+    # Get IP configuration method - support both singular and plural forms
     ip_service = config.get('ip_service', None)
+    ip_services = config.get('ip_services', [])
     ip_interface = config.get('interface', None)
     ip6_service = config.get('ip6_service', None)
+    ip6_services = config.get('ip6_services', [])
     ip6_interface = config.get('interface6', None)
+    
+    # If ip_services is provided but ip_service is not, use the first service from the list
+    if not ip_service and ip_services:
+        ip_service = ip_services[0]
+    
+    # If ip6_services is provided but ip6_service is not, use the first service from the list
+    if not ip6_service and ip6_services:
+        ip6_service = ip6_services[0]
     
     # Log the configuration
     if ip_service:
-        log(f"Using service to determine IPv4: {ip_service}", section="MAIN")
+        if ip_services and len(ip_services) > 1:
+            log(f"Using primary service to determine IPv4: {ip_service} (with {len(ip_services)-1} fallback services)", section="MAIN")
+        else:
+            log(f"Using service to determine IPv4: {ip_service}", section="MAIN")
     elif ip_interface:
         log(f"Using interface to determine IPv4: {ip_interface}", section="MAIN") 
     else:
         log("No method configured to determine IPv4", "WARNING", section="MAIN")
     if ip6_service:
-        log(f"Using service to determine IPv6: {ip6_service}", section="MAIN")
+        if ip6_services and len(ip6_services) > 1:
+            log(f"Using primary service to determine IPv6: {ip6_service} (with {len(ip6_services)-1} fallback services)", section="MAIN")
+        else:
+            log(f"Using service to determine IPv6: {ip6_service}", section="MAIN")
     elif ip6_interface:
         log(f"Using interface to determine IPv6: {ip6_interface}", section="MAIN")
     

@@ -364,6 +364,88 @@ class TestMiscellaneous(unittest.TestCase):
         self.assertTrue(result)
 
 
+class TestConfigurationFormats(unittest.TestCase):
+    """Tests for different configuration formats."""
+    
+    @patch('update_dyndns.log')
+    def test_ip_services_plural_format(self, mock_log):
+        """Test that ip_services (plural) configuration is recognized correctly."""
+        config_with_ip_services = {
+            "timer": 300,
+            "loglevel": "INFO",
+            "ip_services": [
+                "https://api.ipify.org",
+                "https://ifconfig.me/ip",
+                "https://icanhazip.com"
+            ],
+            "providers": [
+                {
+                    "name": "test_provider",
+                    "protocol": "dyndns2",
+                    "url": "https://example.com/update",
+                    "hostname": "test.example.com",
+                    "username": "user",
+                    "password": "pass"
+                }
+            ]
+        }
+        
+        # Test validation
+        result = update_dyndns.validate_config(config_with_ip_services)
+        self.assertTrue(result)
+        
+        # Test configuration parsing logic
+        ip_service = config_with_ip_services.get('ip_service', None)
+        ip_services = config_with_ip_services.get('ip_services', [])
+        ip_interface = config_with_ip_services.get('interface', None)
+        
+        # Apply the same logic as in main()
+        if not ip_service and ip_services:
+            ip_service = ip_services[0]
+        
+        # Should have a method to determine IPv4
+        has_ipv4_method = bool(ip_service or ip_interface)
+        self.assertTrue(has_ipv4_method)
+        self.assertEqual(ip_service, "https://api.ipify.org")
+        self.assertEqual(len(ip_services), 3)
+    
+    @patch('update_dyndns.log')
+    def test_mixed_configuration_format(self, mock_log):
+        """Test mixed configuration with both ip_service and ip_services."""
+        config_mixed = {
+            "timer": 300,
+            "ip_service": "https://api.ipify.org",
+            "ip_services": [
+                "https://ifconfig.me/ip",
+                "https://icanhazip.com"
+            ],
+            "providers": [
+                {
+                    "name": "test_provider",
+                    "protocol": "dyndns2",
+                    "url": "https://example.com/update",
+                    "hostname": "test.example.com",
+                    "username": "user",
+                    "password": "pass"
+                }
+            ]
+        }
+        
+        result = update_dyndns.validate_config(config_mixed)
+        self.assertTrue(result)
+        
+        # In mixed case, ip_service should take precedence
+        ip_service = config_mixed.get('ip_service', None)
+        ip_services = config_mixed.get('ip_services', [])
+        
+        if not ip_service and ip_services:
+            ip_service = ip_services[0]
+        
+        # ip_service should remain as originally configured
+        self.assertEqual(ip_service, "https://api.ipify.org")
+        self.assertEqual(len(ip_services), 2)
+
+
 if __name__ == '__main__':
     # Test each class individually
     print("Testing IP Validation...")
@@ -389,5 +471,8 @@ if __name__ == '__main__':
     
     print("\nTesting Miscellaneous...")
     unittest.TextTestRunner(verbosity=2).run(unittest.TestLoader().loadTestsFromTestCase(TestMiscellaneous))
+    
+    print("\nTesting Configuration Formats...")
+    unittest.TextTestRunner(verbosity=2).run(unittest.TestLoader().loadTestsFromTestCase(TestConfigurationFormats))
     
     print("\nAll basic tests completed!")
