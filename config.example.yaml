@@ -41,44 +41,33 @@ enable_interface_fallback: true   # Use interface IP as fallback
 # Interval in seconds for IP checks (e.g. every 5 minutes)
 timer: 300
 
-# Logging levels
-loglevel: INFO         # File loglevel: only log important info and above (INFO, WARNING, ERROR, CRITICAL)
-consolelevel: TRACE   # Console loglevel: show all messages, including routine/status (TRACE, DEBUG, INFO, ...)
-#
-# Explanation:
-# - With this setting, the log file will only contain important events (INFO and above),
-#   while the console will show all messages, including routine/status messages (e.g. "IP unchanged", "Next run in ...").
-# - Set loglevel to TRACE if you want to log everything to file as well.
-# - Set consolelevel to INFO or higher if you want less output on the console.
-# - Both options are independent.
-#
-# Loglevel options: TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL
-#
-# TRACE is for routine/status messages to avoid log bloat. Use only if you want to see every status message.
-#
-# Example:
-#   loglevel: INFO
-#   consolelevel: TRACE
-#   # This will log only important events to file, but show all messages on the console.
+# =============================================================================
+# LOGGING CONFIGURATION
+# =============================================================================
 
-# Logging configuration (optional)
+# Logging levels
+loglevel: INFO         # File logging level: INFO, WARNING, ERROR, CRITICAL will be written to log file
+consolelevel: INFO     # Console logging level: INFO, WARNING, ERROR, CRITICAL will be shown on console
+
+# Logging configuration (optional file logging)
 logging:
   enabled: true                 # Set to true to enable file logging
   file: "/var/log/dyndns/dyndns.log"  # Log file path (directory will be created if needed)
   max_size_mb: 10                # Maximum size in MB before rotation
   backup_count: 3                # Number of backup files to keep
 
-# Console and file log levels
-consolelevel: "INFO"   # Minimum level for messages to appear in the console (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-loglevel: "WARNING"    # Minimum level for messages to be written to the log file (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-
-# Explanation:
-# - 'consolelevel' controls which messages are shown in the console output (stdout).
-# - 'loglevel' controls which messages are written to the log file (if file logging is enabled).
-# - For example, with consolelevel: "INFO" and loglevel: "WARNING":
-#     - INFO, WARNING, ERROR, and CRITICAL messages appear in the console.
-#     - Only WARNING, ERROR, and CRITICAL messages are written to the log file.
-# - This allows you to keep the console more verbose, while keeping the log file clean and focused on important events.
+# Log Level Explanation:
+# - TRACE: Routine messages (e.g., "Next run in 60 seconds...")
+# - DEBUG: Debug information (e.g., API responses)  
+# - INFO: Important events (e.g., IP updates, successful updates)
+# - WARNING: Warnings (e.g., network issues)
+# - ERROR: Errors (e.g., failed API calls)
+# - CRITICAL: Critical errors (e.g., configuration errors)
+#
+# Examples:
+#   loglevel: INFO, consolelevel: INFO     -> Both show INFO and above
+#   loglevel: WARNING, consolelevel: TRACE -> File shows only warnings/errors, console shows everything
+#   loglevel: INFO, consolelevel: WARNING  -> File shows info/warnings/errors, console shows only warnings/errors
 
 # Service to fetch the public IPv4 address
 ip_service: "https://api.ipify.org"

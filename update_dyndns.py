@@ -101,17 +101,17 @@ def log(message, level="INFO", section="MAIN", file_only_on_change=False):
         section: Section/component name for the log
         file_only_on_change: If True, only log to file for ERROR/CRITICAL levels
     """
-    global console_level, file_level, file_logger_instance
+    global console_level, log_level, file_logger_instance
     
     # Get log levels with defaults
-    console_level = globals().get('console_level', 'INFO')
-    file_level = globals().get('file_level', 'WARNING')
+    current_console_level = globals().get('console_level', 'INFO')
+    current_file_level = globals().get('log_level', 'INFO')  # Use log_level for file logging
     
     # Log levels for filtering
     levels = ["TRACE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
     try:
         message_idx = levels.index(level)
-        console_idx = levels.index(console_level)
+        console_idx = levels.index(current_console_level)
         should_log_console = message_idx >= console_idx
     except ValueError:
         should_log_console = True
@@ -130,7 +130,7 @@ def log(message, level="INFO", section="MAIN", file_only_on_change=False):
         
         # Check file log level
         try:
-            file_idx = levels.index(file_level)
+            file_idx = levels.index(current_file_level)
             if message_idx < file_idx:
                 should_log_file = False
         except ValueError:
