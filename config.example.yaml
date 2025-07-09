@@ -2,40 +2,40 @@
 # Copy this file to config/config.yaml and adjust it to your needs!
 
 # =============================================================================
-# NETZWERK-RESILIENZ-KONFIGURATION (NEU!)
+# NETWORK RESILIENCE CONFIGURATION (NEW!)
 # =============================================================================
-# Diese Einstellungen sorgen dafür, dass das Programm auch bei Netzwerkproblemen
-# weiterläuft und nicht beendet wird
+# These settings ensure that the program continues running even during network problems
+# and does not exit
 
-# Mehrere IP-Ermittlungsservices (werden der Reihe nach ausprobiert)
+# Multiple IP detection services (tried in sequence)
 ip_services:
-  - "https://api.ipify.org"           # Standard-Service (bisheriger Default)
+  - "https://api.ipify.org"           # Standard service (previous default)
   - "https://ifconfig.me/ip"          # Backup 1
   - "https://icanhazip.com"           # Backup 2  
   - "https://checkip.amazonaws.com"   # Backup 3
   - "https://ipecho.net/plain"        # Backup 4
   - "https://myexternalip.com/raw"    # Backup 5
 
-# Mehrere IPv6-Ermittlungsservices (werden der Reihe nach ausprobiert)
+# Multiple IPv6 detection services (tried in sequence)
 ip6_services:
-  - "https://api64.ipify.org"         # Standard IPv6-Service
-  - "https://ifconfig.me/ip"          # Backup 1 (unterstützt auch IPv6)
-  - "https://icanhazip.com"           # Backup 2 (automatische IPv6-Erkennung)
-  - "https://v6.ident.me"            # Backup 3 (IPv6-spezifisch)
-  - "https://ipv6.icanhazip.com"     # Backup 4 (IPv6-spezifisch)
+  - "https://api64.ipify.org"         # Standard IPv6 service
+  - "https://ifconfig.me/ip"          # Backup 1 (also supports IPv6)
+  - "https://icanhazip.com"           # Backup 2 (automatic IPv6 detection)
+  - "https://v6.ident.me"            # Backup 3 (IPv6-specific)
+  - "https://ipv6.icanhazip.com"     # Backup 4 (IPv6-specific)
 
-# Netzwerk-Fehlerbehandlung (gilt für IPv4 und IPv6)
-network_retry_interval: 60        # Wartezeit nach Fehlschlag (Sekunden) - Standard: 1 Minute
-max_failures_before_backoff: 5    # Anzahl Fehler vor Exponential Backoff
-backoff_multiplier: 2.0           # Backoff-Multiplikator (2.0 = Verdopplung der Wartezeit)
-max_wait_time: 600                # Maximale Wartezeit (10 Minuten)
-error_wait_time: 30               # Wartezeit nach unerwarteten Fehlern
+# Network error handling (applies to IPv4 and IPv6)
+network_retry_interval: 60        # Wait time after failure (seconds) - Default: 1 minute
+max_failures_before_backoff: 5    # Number of failures before exponential backoff
+backoff_multiplier: 2.0           # Backoff multiplier (2.0 = doubling of wait time)
+max_wait_time: 600                # Maximum wait time (10 minutes)
+error_wait_time: 30               # Wait time after unexpected errors
 
-# Interface-Fallback (falls alle externen Services fehlschlagen)
-enable_interface_fallback: true   # Interface-IP als Fallback verwenden
+# Interface fallback (if all external services fail)
+enable_interface_fallback: true   # Use interface IP as fallback
 
 # =============================================================================
-# BASIS-KONFIGURATION
+# BASIC CONFIGURATION
 # =============================================================================
 
 # Interval in seconds for IP checks (e.g. every 5 minutes)
