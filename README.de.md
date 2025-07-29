@@ -74,12 +74,6 @@ loglevel: "INFO"
 consolelevel: "DEBUG"
 loglevel: "TRACE"
 ```
-| TRACE    | **Routine-/Statusmeldungen** für kontinuierliche Überwachung. Sehr häufige, regelmäßige Meldungen die bei normaler Nutzung "Lärm" erzeugen würden. | `"IP unchanged (1.2.3.4), no update needed."`, `"Provider 'xyz' was already up to date, no update performed."` |
-| DEBUG    | **Detaillierte Debug-Informationen** für Fehlersuche und Entwicklung. Zeigt technische Details, Konfigurationsprüfungen und Verarbeitungsschritte. | `"Next run in 300 seconds..."`, `"=== NOTIFICATION DEBUG START ==="`, `"BaseProvider: Starting unified update for xyz"`, HTTP-Anfragen/Antworten |
-| INFO     | **Normale Betriebsinformationen** - wichtige Ereignisse die du normalerweise sehen möchtest. | `"Provider 'xyz' updated successfully."`, `"Notification sent via discord"`, `"Using service to determine IPv4: https://api.ipify.org"` |
-| WARNING  | **Warnungen** - unerwartete, aber nicht fatale Ereignisse die Aufmerksamkeit verdienen. | `"❌ Service https://api.ipify.org fehlgeschlagen"`, `"⚠️ Keine IP verfügbar (Fehler #1)"`, Netzwerkprobleme |
-| ERROR    | **Fehler** die sofortige Aufmerksamkeit erfordern, aber das Programm weiterlaufen lassen. | Provider-Update-Fehler, Konfigurationsfehler, API-Authentifizierungsprobleme |
-| CRITICAL | **Kritische Fehler** - das Programm wird beendet. | `"config.yaml not found!"`, schwerwiegende Konfigurationsfehler |
 
 ### Beispiel-Konfiguration für loglevel und consolelevel
 
@@ -94,20 +88,6 @@ consolelevel: INFO      # Konsolenlevel: nur wichtige Infos und höher anzeigen
 - Setze einen der Werte auf `DEBUG`, um technische Details und Timer-Meldungen zu sehen.
 
 ### Praktische Empfehlungen
-
-**Für Live-Monitoring (Konsole):**
-```yaml
-consolelevel: "DEBUG"    # Zeigt Timer + technische Details
-# ODER
-consolelevel: "INFO"     # Zeigt nur wichtige Ereignisse  
-```
-
-**Für persistente Logs (Datei):**
-```yaml
-loglevel: "TRACE"        # Vollständige Aufzeichnung aller Aktivitäten
-# ODER  
-loglevel: "INFO"         # Nur wichtige Ereignisse dauerhaft speichern
-```
 
 **Kombinationsbeispiele:**
 ```yaml
