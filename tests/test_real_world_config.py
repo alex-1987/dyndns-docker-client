@@ -6,8 +6,8 @@ Test to simulate real-world configuration and verify unified provider architectu
 import sys
 import os
 
-# Add current directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from update_dyndns import create_provider, update_provider
 
@@ -30,7 +30,8 @@ def test_real_world_config():
             'name': 'my-ipv64',
             'protocol': 'ipv64',
             'auth_method': 'token',
-            'token': 'ipv64_test_token_456'
+            'token': 'ipv64_test_token_456',
+            'domain': 'example.ipv64.net'
         },
         {
             'name': 'my-dyndns2',

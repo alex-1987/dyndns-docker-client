@@ -7,14 +7,15 @@ import sys
 import os
 from unittest.mock import patch, MagicMock
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from update_dyndns import create_provider, update_provider
 
 def test_notification_summary():
     """Test and summarize notification functionality."""
     
-    print("📧 NOTIFICATION FUNCTIONALITY TEST")
+    print("NOTIFICATION FUNCTIONALITY TEST")
     print("=" * 50)
     
     # Test config with notification settings

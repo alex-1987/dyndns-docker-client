@@ -150,7 +150,8 @@ class TestProviderIntegration(unittest.TestCase):
             'name': 'my-ipv64',
             'protocol': 'ipv64',
             'auth_method': 'token',
-            'token': 'your_update_token'
+            'token': 'your_update_token',
+            'domain': 'yourdomain.tld'
         }
         
         provider = create_provider(ipv64_config)
@@ -179,7 +180,7 @@ class TestProviderIntegration(unittest.TestCase):
             {'protocol': 'CLOUDFLARE', 'name': 'test1', 'zone': 'example.com', 'api_token': 'token', 'record_name': 'sub.example.com'},
             {'protocol': 'Cloudflare', 'name': 'test2', 'zone': 'example.com', 'api_token': 'token', 'record_name': 'sub.example.com'},
             {'protocol': 'cloudflare', 'name': 'test3', 'zone': 'example.com', 'api_token': 'token', 'record_name': 'sub.example.com'},
-            {'protocol': 'IPV64', 'name': 'test4', 'token': 'token'},
+            {'protocol': 'IPV64', 'name': 'test4', 'token': 'token', 'domain': 'example.com'},
         ]
         
         for config in configs:

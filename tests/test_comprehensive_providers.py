@@ -428,7 +428,7 @@ class TestEdgeCases(unittest.TestCase):
 
 def run_comprehensive_tests():
     """Run all tests and provide a summary."""
-    print("🧪 COMPREHENSIVE PROVIDER TEST SUITE")
+    print("COMPREHENSIVE PROVIDER TEST SUITE")
     print("=" * 60)
     print("Testing all provider functionality, configurations, and edge cases")
     print("Can be run locally or in CI/CD environments")
