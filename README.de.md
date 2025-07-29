@@ -49,20 +49,37 @@ Es unterstützt IPv4 und optional IPv6, prüft regelmäßig die öffentliche IP 
 
 ## Loglevel & Consolelevel
 
-Der Loglevel steuert die **Ausführlichkeit der Protokollierung** (Datei und/oder Konsole). Es gibt zwei Stufen:
-- `loglevel`: Steuert, was ins Logfile geschrieben wird (wenn Dateilogs aktiviert sind)
-- `consolelevel`: Steuert, was auf der Konsole (stdout) ausgegeben wird
-
-Setze diese Optionen in deiner `config.yaml`:
+Konfiguriere das Logging in deiner `config.yaml`:
 
 ```yaml
-loglevel: "INFO"        # Logfile-Level (bei aktiviertem Dateilog)
-consolelevel: "INFO"    # Konsolen-Level (was im Terminal ausgegeben wird)
+loglevel: "INFO"        # Dateiloglevel (wenn Datei-Logging aktiviert)
+consolelevel: "INFO"    # Konsolen-Ausgabelevel
 ```
 
-**Was ist auf welcher Stufe enthalten?**
-| Loglevel | Beschreibung | Beispiel-Meldungen |
-|----------|--------------|-------------------|
+**Verfügbare Log-Level:**
+| Level | Beschreibung | Wann verwenden |
+|-------|-------------|-------------|
+| **TRACE** | Sehr detailliert - Routine-Statusmeldungen | Komplette Aktivitätsüberwachung, zeigt jeden IP-Check |
+| **DEBUG** | Technische Details für Fehlersuche | Entwicklung, Debugging, Timer-Meldungen |
+| **INFO** | Normaler Betrieb - wichtige Ereignisse | Standard für Produktion |
+| **WARNING** | Probleme die das Programm nicht stoppen | Minimum für Produktion - zeigt Netzwerkprobleme |
+| **ERROR** | Schwerwiegende Fehler die Aufmerksamkeit erfordern | Nur kritische Überwachung |
+| **CRITICAL** | Fatale Fehler die das Programm beenden | Wird immer angezeigt |
+
+**Häufige Konfigurationen:**
+```yaml
+# Produktion - ruhige Konsole, detaillierte Datei
+consolelevel: "WARNING"  # Nur Probleme auf Konsole anzeigen
+loglevel: "INFO"         # Alle wichtigen Events in Datei loggen
+
+# Entwicklung - alles anzeigen
+consolelevel: "DEBUG"    # Timer und technische Details anzeigen
+loglevel: "TRACE"        # Alles in Datei loggen
+
+# Minimal - nur Fehler
+consolelevel: "ERROR"    # Nur Fehler auf Konsole
+loglevel: "WARNING"      # Nur Probleme in Datei
+```
 | TRACE    | **Routine-/Statusmeldungen** für kontinuierliche Überwachung. Sehr häufige, regelmäßige Meldungen die bei normaler Nutzung "Lärm" erzeugen würden. | `"IP unchanged (1.2.3.4), no update needed."`, `"Provider 'xyz' was already up to date, no update performed."` |
 | DEBUG    | **Detaillierte Debug-Informationen** für Fehlersuche und Entwicklung. Zeigt technische Details, Konfigurationsprüfungen und Verarbeitungsschritte. | `"Next run in 300 seconds..."`, `"=== NOTIFICATION DEBUG START ==="`, `"BaseProvider: Starting unified update for xyz"`, HTTP-Anfragen/Antworten |
 | INFO     | **Normale Betriebsinformationen** - wichtige Ereignisse die du normalerweise sehen möchtest. | `"Provider 'xyz' updated successfully."`, `"Notification sent via discord"`, `"Using service to determine IPv4: https://api.ipify.org"` |
@@ -113,154 +130,7 @@ consolelevel: "TRACE"    # Konsole: alle Details live sehen
 loglevel: "TRACE"        # Datei: vollständige Aufzeichnung
 ```
 
-**Beispiele für Log-Einträge:**
-- Jeder IP-Check (alle `timer` Sekunden)
-- Jeder Provider-Update-Versuch (Erfolg, keine Änderung, Fehler)
-- Alle Fehler und Warnungen
-- Alle gesendeten Benachrichtigungen (und Fehler)
-- Alle Config-Reloads und Hot-Reload-Events
-- Alle Start- und Stopp-Ereignisse
-
-### Detaillierte Auflistung aller Log-Meldungen
-
-#### 🟢 TRACE Level - Routine-/Statusmeldungen
-**Wann verwenden:** Für komplette Aktivitätsüberwachung, wenn du jeden Schritt sehen möchtest.
-- `"IP unchanged (1.2.3.4), no update needed."` - Wird alle `timer` Sekunden ausgegeben wenn sich IP nicht geändert hat
-- `"IPv6 unchanged (2001:db8::1), no update needed."` - IPv6-Version der obigen Meldung  
-- `"Provider 'xyz' was already up to date, no update performed."` - Provider-Update war nicht nötig (nochg)
-- `"No update needed (nochg)."` - Spezifische Provider-Antworten
-- `"Current public IP: 1.2.3.4"` - Wird ausgegeben wenn IP unverändert ist
-- `"Current public IPv6: 2001:db8::1"` - IPv6-Version bei unveränderter IP
-
-#### 🔵 DEBUG Level - Technische Details & Entwicklung  
-**Wann verwenden:** Für Fehlersuche, Entwicklung oder wenn du verstehen möchtest was intern passiert.
-
-**Timer & Ablaufsteuerung:**
-- `"Next run in 300 seconds..."` - Nach jedem Durchlauf
-- `"⏳ Nächster IP-Versuch in 120 Sekunden..."` - Bei Netzwerkproblemen mit Backoff
-- `"Logging system initialized: file_level='INFO', console_level='DEBUG'"` - Beim Start
-- `"Testing DEBUG level logging - this message should appear if consolelevel is DEBUG"` - Start-Test
-
-**Notification-System (sehr detailliert):**
-- `"=== NOTIFICATION DEBUG START ==="` - Beginn jeder Notification-Verarbeitung
-- `"send_notifications called: level='UPDATE', message='...', service_name='xyz'"` - Jeder Aufruf
-- `"Notification config found with 3 services configured"` - Konfigurationsprüfung
-- `"Checking discord service:"` - Pro Service wird geprüft:
-  - `"  - Config found: true"`
-  - `"  - Enabled: true"` 
-  - `"  - Level 'UPDATE' in notify_on ['ERROR', 'UPDATE']: true"`
-  - `"  - Cooldown check passed: true"`
-- `"Sending Discord notification to webhook (service: xyz)"` - Vor dem Senden
-- `"Discord notification sent successfully (status: 200)"` - Nach erfolgreichem Senden
-- `"Notification via discord suppressed: cooldown active"` - Wenn unterdrückt
-- `"=== NOTIFICATION DEBUG END (processing completed for level 'UPDATE') ==="` - Ende
-
-**Provider-Updates (Unified Architecture):**
-- `"BaseProvider: Starting unified update for xyz"` - Start jedes Updates
-- `"BaseProvider: Update result for xyz: updated"` - Ergebnis des Updates
-- `"BaseProvider: Sending success notification for xyz"` - Vor Notification
-- `"BaseProvider: Using global notify config for xyz"` - Config-Fallback-Info
-- `"BaseProvider: Exception in unified update for xyz: error"` - Bei Fehlern
-
-**Netzwerk & IP-Erkennung:**
-- `"Versuch 1/6: https://api.ipify.org"` - Jeder Service-Versuch
-- `"IPv6 Versuch 2/5: https://ifconfig.me/ip"` - IPv6-Service-Versuche
-- `"Attempting to get IPv4 from interface 'eth0'"` - Interface-Zugriff
-- `"No cooldown configured for discord - notification allowed"` - Cooldown-Prüfungen
-- `"No cooldown file found for discord - first notification allowed"` - Erste Benachrichtigung
-
-**HTTP & Provider-APIs:**
-- `"Cloudflare GET A response: {...}"` - API-Antworten (detailliert)
-- `"Cloudflare PATCH A response: {...}"` - Update-Anfragen
-- `"ipv64 response: good 1.2.3.4"` - Provider-Antworten
-- `"[provider-name] response: updated"` - DynDNS2-Antworten
-
-#### 🟡 INFO Level - Normale Betriebsinformationen
-**Wann verwenden:** Standardlevel für normale Nutzung - zeigt alle wichtigen Ereignisse.
-
-**System & Konfiguration:**
-- `"Using service to determine IPv4: https://api.ipify.org"` - Konfiguration beim Start
-- `"Using primary service to determine IPv4: https://api.ipify.org (with 5 fallback services)"` - Mit Fallbacks
-- `"Change in config.yaml detected. Reloading configuration..."` - Hot-Reload
-- `"Starting initial update run for all providers..."` - Startup-Update
-- `"IP has not changed since last run. No provider updates needed on startup."` - Skip-Update
-
-**IP-Erkennung & Updates:**
-- `"Current public IP: 1.2.3.4"` - Bei IP-Änderung (wichtig!)
-- `"New IP detected: 1.2.3.4 (previous: 1.2.3.5) – update will be performed."` - IP-Wechsel
-- `"IP erfolgreich ermittelt von https://ifconfig.me/ip: 1.2.3.4"` - Erfolgreiche IP-Erkennung
-- `"Interface-IP ermittelt: 1.2.3.4"` - Interface-IP gefunden
-- `"Socket-Fallback IP: 1.2.3.4"` - Fallback-Methode erfolgreich
-
-**Provider-Updates:**
-- `"Provider 'xyz' updated successfully."` - Erfolgreiche Updates
-- `"Provider 'xyz' updated successfully. New IP: 1.2.3.4"` - Mit neuer IP
-- `"Provider 'xyz' updated successfully. New IP: 1.2.3.4 (previous: 1.2.3.5)"` - Mit alter IP
-
-**Benachrichtigungen:**
-- `"Notification sent via discord"` - Erfolgreiche Benachrichtigung
-- `"Notification sent via email"` - Per E-Mail gesendet
-- `"Log file enabled: /app/config/dyndns.log (max size: 10.0MB, backups: 3)"` - File-Logging aktiviert
-
-**Netzwerk-Resilienz:**
-- `"Versuche IP-Ermittlung über 6 Services..."` - Multi-Service-Versuch
-- `"Fallback auf Interface-IP..."` - Interface-Fallback
-- `"🔄 Programm läuft weiter trotz Netzwerkproblemen..."` - Resilient-Mode
-- `"✅ Netzwerk wiederhergestellt nach 5 Fehlern"` - Wiederherstellung
-
-#### 🟠 WARNING Level - Warnungen & Probleme
-**Wann verwenden:** Mindestlevel für Produktionsumgebungen - zeigt Probleme die Aufmerksamkeit brauchen.
-
-**Netzwerk-Probleme:**
-- `"❌ Service https://api.ipify.org fehlgeschlagen: Name resolution error"` - Service-Fehler
-- `"❌ Alle IP-Services fehlgeschlagen"` - Kompletter Ausfall aller Services
-- `"⚠️ Ungültige IP von https://api.ipify.org: invalid-response"` - Ungültige API-Antwort
-- `"⚠️ Keine IP verfügbar (Fehler #3). Warte 120s..."` - Netzwerkausfall mit Backoff
-- `"⚠️ Anhaltende Netzwerkprobleme (Fehler #8). Exponential Backoff: Warte 600s..."` - Langanhaltende Probleme
-- `"❌ Interface-Fallback fehlgeschlagen: Interface 'eth0' not found"` - Interface-Probleme
-- `"❌ Socket-Fallback fehlgeschlagen: Network unreachable"` - Socket-Fallback-Fehler
-
-**Provider-Probleme:**
-- `"Provider 'xyz' could not be updated initially."` - Startup-Update fehlgeschlagen
-- `"Provider 'xyz' could not be updated after config change."` - Nach Config-Reload
-- `"Update interval at ipv64.net exceeded! Update limit reached."` - Rate-Limit
-- `"No method configured to determine IPv4"` - Konfigurationslücke
-
-**Konfiguration:**
-- `"Unknown logging option 'invalid_key' in config.yaml."` - Unbekannte Config-Option
-- `"No IPv4 address found for interface 'eth0'"` - Interface ohne IP
-- `"Interface 'nonexistent' not found"` - Interface existiert nicht
-
-#### 🔴 ERROR Level - Schwerwiegende Fehler
-**Wann verwenden:** Für kritische Überwachung - nur schwerwiegende Probleme die sofortige Aufmerksamkeit brauchen.
-
-**Provider-Update-Fehler:**
-- `"Provider 'xyz' update failed: Authentication failed"` - API-Authentifizierung
-- `"Update for provider 'xyz' failed: Invalid API token"` - Token-Probleme
-- `"Cloudflare update failed: Zone not found"` - API-spezifische Fehler
-- `"Error in DynDNS2 update: Connection timeout"` - Verbindungsfehler
-
-**Konfigurationsfehler:**
-- `"Missing key 'timer' in config.yaml."` - Fehlende Pflichtfelder
-- `"Invalid consolelevel 'INVALID'. Valid options: TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL"` - Ungültige Werte
-- `"The field 'providers' must be a list."` - Strukturfehler
-- `"Missing field 'protocol' in provider #1"` - Provider-Konfiguration
-
-**System-Fehler:**
-- `"Error loading config.yaml: YAML parsing error"` - YAML-Syntaxfehler  
-- `"Error saving last IP (v4): Permission denied"` - Dateisystem-Probleme
-- `"Failed to setup file logging: Permission denied"` - Logging-Setup-Fehler
-
-#### 🟣 CRITICAL Level - Fatale Fehler (Programm beendet sich)
-**Wann verwenden:** Immer aktiviert - zeigt nur Fehler die zum Programmende führen.
-
-- `"config/config.yaml not found! Please provide your own configuration..."` - Keine Config-Datei
-- `"config.yaml is empty or invalid! Please check the file..."` - Leere/invalide Config
-- `"config.yaml does not contain any providers!"` - Keine Provider konfiguriert
-- `"Configuration invalid. Program will exit."` - Validation fehlgeschlagen
-
-**Hinweis:**
-- Wenn du `consolelevel` nicht setzt, wird für die Konsole das gleiche Level wie für das Logfile verwendet.
+---
 - Dateilogs müssen im Abschnitt `logging` der Config aktiviert werden, damit Logs in eine Datei geschrieben werden.
 
 Beispiel-Konfiguration:

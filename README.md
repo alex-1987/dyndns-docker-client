@@ -59,32 +59,116 @@ It supports IPv4 and optionally IPv6, regularly checks the public IP, and update
 
 ---
 
-### Log Levels Explained
+## Log Levels Explained
 
-- **DEBUG:**  
-  Shows very detailed information for troubleshooting and development.  
-  Examples: Internal variable values, function calls, processing steps.
+Configure logging in your `config.yaml`:
 
-- **INFO:**  
-  Shows general information about normal application operation.  
-  Examples: Successful updates, detected IP addresses, startup messages.
+```yaml
+loglevel: "INFO"        # Log file level (when file logging enabled)
+consolelevel: "INFO"    # Console output level
+```
 
-- **WARNING:**  
-  Indicates something unexpected happened, but the application can continue running.  
-  Examples: Temporary network issues, missing optional configuration, retry attempts.
+**Available Log Levels:**
+| Level | Description | When to Use |
+|-------|-------------|-------------|
+| **TRACE** | Very detailed - routine status messages | Complete activity monitoring, shows every IP check |
+| **DEBUG** | Technical details for troubleshooting | Development, debugging issues, timer messages |
+| **INFO** | Normal operations - important events | Standard production use |
+| **WARNING** | Problems that don't stop the program | Minimum for production - shows network issues |
+| **ERROR** | Serious errors requiring attention | Critical monitoring only |
+| **CRITICAL** | Fatal errors that terminate the program | Always shown |
 
-- **ERROR:**  
-  Indicates a serious problem that prevented an operation from completing.  
-  Examples: Failed DNS update, permanent network failure, invalid configuration.
+**Common Configurations:**
+```yaml
+# Production - quiet console, detailed file
+consolelevel: "WARNING"  # Only show problems on console
+loglevel: "INFO"         # Log all important events to file
 
-- **CRITICAL:**  
-  Indicates a very severe error that may cause the application to stop or lose important functionality.  
-  Examples: Fatal configuration errors, unhandled exceptions, application shutdown.
+# Development - see everything
+consolelevel: "DEBUG"    # Show timers and technical details
+loglevel: "TRACE"        # Log everything to file
 
-**Note:**  
-The lower the log level (e.g. DEBUG), the more details are shown.  
-For normal operation, INFO or WARNING is usually sufficient.  
-Use DEBUG only for troubleshooting.
+# Minimal - errors only
+consolelevel: "ERROR"    # Only errors on console
+loglevel: "WARNING"      # Only problems to file
+```
+- `"Provider 'xyz' updated successfully. New IP: 1.2.3.4"` - With new IP
+- `"Provider 'xyz' updated successfully. New IP: 1.2.3.4 (previous: 1.2.3.5)"` - With old IP
+
+**Notifications:**
+- `"Notification sent via discord"` - Successful notification
+- `"Notification sent via email"` - Sent via email
+- `"Log file enabled: /app/config/dyndns.log (max size: 10.0MB, backups: 3)"` - File logging enabled
+
+**Network Resilience:**
+- `"Attempting IP detection via 6 services..."` - Multi-service attempt
+- `"Fallback to interface IP..."` - Interface fallback
+- `"🔄 Program continues despite network problems..."` - Resilient mode
+- `"✅ Network restored after 5 failures"` - Recovery
+
+#### 🟠 WARNING Level - Warnings & Problems
+**When to use:** Minimum level for production environments - shows problems that need attention.
+
+**Network Problems:**
+- `"❌ Service https://api.ipify.org failed: Name resolution error"` - Service errors
+- `"❌ All IP services failed"` - Complete failure of all services
+- `"⚠️ Invalid IP from https://api.ipify.org: invalid-response"` - Invalid API response
+- `"⚠️ No IP available (error #3). Waiting 120s..."` - Network outage with backoff
+- `"⚠️ Persistent network problems (error #8). Exponential backoff: Waiting 600s..."` - Long-term problems
+- `"❌ Interface fallback failed: Interface 'eth0' not found"` - Interface problems
+- `"❌ Socket fallback failed: Network unreachable"` - Socket fallback error
+
+**Provider Problems:**
+- `"Provider 'xyz' could not be updated initially."` - Startup update failed
+- `"Provider 'xyz' could not be updated after config change."` - After config reload
+- `"Update interval at ipv64.net exceeded! Update limit reached."` - Rate limit
+- `"No method configured to determine IPv4"` - Configuration gap
+
+**Configuration:**
+- `"Unknown logging option 'invalid_key' in config.yaml."` - Unknown config option
+- `"No IPv4 address found for interface 'eth0'"` - Interface without IP
+- `"Interface 'nonexistent' not found"` - Interface doesn't exist
+
+#### 🔴 ERROR Level - Serious Errors
+**When to use:** For critical monitoring - only serious problems that need immediate attention.
+
+**Provider Update Errors:**
+- `"Provider 'xyz' update failed: Authentication failed"` - API authentication
+- `"Update for provider 'xyz' failed: Invalid API token"` - Token problems
+- `"Cloudflare update failed: Zone not found"` - API-specific errors
+- `"Error in DynDNS2 update: Connection timeout"` - Connection errors
+
+**Configuration Errors:**
+- `"Missing key 'timer' in config.yaml."` - Missing required fields
+- `"Invalid consolelevel 'INVALID'. Valid options: TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL"` - Invalid values
+- `"The field 'providers' must be a list."` - Structure errors
+- `"Missing field 'protocol' in provider #1"` - Provider configuration
+
+**System Errors:**
+- `"Error loading config.yaml: YAML parsing error"` - YAML syntax error  
+- `"Error saving last IP (v4): Permission denied"` - Filesystem problems
+- `"Failed to setup file logging: Permission denied"` - Logging setup error
+
+#### 🟣 CRITICAL Level - Fatal Errors (Program Terminates)
+**When to use:** Always enabled - shows only errors that cause program termination.
+
+- `"config/config.yaml not found! Please provide your own configuration..."` - No config file
+- `"config.yaml is empty or invalid! Please check the file..."` - Empty/invalid config
+- `"config.yaml does not contain any providers!"` - No providers configured
+- `"Configuration invalid. Program will exit."` - Validation failed
+
+**Note:**
+- If you don't set `consolelevel`, the same level as for the log file is used for the console.
+- File logs must be enabled in the `logging` section of the config for logs to be written to a file.
+
+Example configuration:
+```yaml
+loglevel: "INFO"
+consolelevel: "WARNING"
+logging:
+  enabled: true
+  file: "/var/log/dyndns/dyndns.log"
+```
 
 ---
 
