@@ -47,38 +47,32 @@ Es unterstützt IPv4 und optional IPv6, prüft regelmäßig die öffentliche IP 
 
 ---
 
-## Loglevel & Consolelevel
+## Log Levels
 
 Konfiguriere das Logging in deiner `config.yaml`:
 
 ```yaml
-loglevel: "INFO"        # Dateiloglevel (wenn Datei-Logging aktiviert)
+loglevel: "INFO"        # Dateiloglevel  
 consolelevel: "INFO"    # Konsolen-Ausgabelevel
 ```
 
-**Verfügbare Log-Level:**
-| Level | Beschreibung | Wann verwenden |
-|-------|-------------|-------------|
-| **TRACE** | Sehr detailliert - Routine-Statusmeldungen | Komplette Aktivitätsüberwachung, zeigt jeden IP-Check |
-| **DEBUG** | Technische Details für Fehlersuche | Entwicklung, Debugging, Timer-Meldungen |
-| **INFO** | Normaler Betrieb - wichtige Ereignisse | Standard für Produktion |
-| **WARNING** | Probleme die das Programm nicht stoppen | Minimum für Produktion - zeigt Netzwerkprobleme |
-| **ERROR** | Schwerwiegende Fehler die Aufmerksamkeit erfordern | Nur kritische Überwachung |
-| **CRITICAL** | Fatale Fehler die das Programm beenden | Wird immer angezeigt |
+**Verfügbare Level:**
+- **TRACE** - Sehr detailliert, zeigt jeden IP-Check
+- **DEBUG** - Technische Details, Timer, Fehlersuche
+- **INFO** - Standard für Produktion, wichtige Ereignisse
+- **WARNING** - Probleme und Netzwerkfehler
+- **ERROR** - Schwerwiegende Fehler die Aufmerksamkeit erfordern
+- **CRITICAL** - Fatale Fehler die das Programm stoppen
 
-**Häufige Konfigurationen:**
+**Schnelle Konfiguration:**
 ```yaml
-# Produktion - ruhige Konsole, detaillierte Datei
-consolelevel: "WARNING"  # Nur Probleme auf Konsole anzeigen
-loglevel: "INFO"         # Alle wichtigen Events in Datei loggen
+# Produktion: ruhige Konsole, detaillierte Logs
+consolelevel: "WARNING"
+loglevel: "INFO"
 
-# Entwicklung - alles anzeigen
-consolelevel: "DEBUG"    # Timer und technische Details anzeigen
-loglevel: "TRACE"        # Alles in Datei loggen
-
-# Minimal - nur Fehler
-consolelevel: "ERROR"    # Nur Fehler auf Konsole
-loglevel: "WARNING"      # Nur Probleme in Datei
+# Entwicklung: alles anzeigen
+consolelevel: "DEBUG"
+loglevel: "TRACE"
 ```
 | TRACE    | **Routine-/Statusmeldungen** für kontinuierliche Überwachung. Sehr häufige, regelmäßige Meldungen die bei normaler Nutzung "Lärm" erzeugen würden. | `"IP unchanged (1.2.3.4), no update needed."`, `"Provider 'xyz' was already up to date, no update performed."` |
 | DEBUG    | **Detaillierte Debug-Informationen** für Fehlersuche und Entwicklung. Zeigt technische Details, Konfigurationsprüfungen und Verarbeitungsschritte. | `"Next run in 300 seconds..."`, `"=== NOTIFICATION DEBUG START ==="`, `"BaseProvider: Starting unified update for xyz"`, HTTP-Anfragen/Antworten |

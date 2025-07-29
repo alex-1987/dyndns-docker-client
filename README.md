@@ -59,38 +59,32 @@ It supports IPv4 and optionally IPv6, regularly checks the public IP, and update
 
 ---
 
-## Log Levels Explained
+## Log Levels
 
 Configure logging in your `config.yaml`:
 
 ```yaml
-loglevel: "INFO"        # Log file level (when file logging enabled)
+loglevel: "INFO"        # Log file level
 consolelevel: "INFO"    # Console output level
 ```
 
-**Available Log Levels:**
-| Level | Description | When to Use |
-|-------|-------------|-------------|
-| **TRACE** | Very detailed - routine status messages | Complete activity monitoring, shows every IP check |
-| **DEBUG** | Technical details for troubleshooting | Development, debugging issues, timer messages |
-| **INFO** | Normal operations - important events | Standard production use |
-| **WARNING** | Problems that don't stop the program | Minimum for production - shows network issues |
-| **ERROR** | Serious errors requiring attention | Critical monitoring only |
-| **CRITICAL** | Fatal errors that terminate the program | Always shown |
+**Available Levels:**
+- **TRACE** - Very detailed, shows every IP check
+- **DEBUG** - Technical details, timers, troubleshooting
+- **INFO** - Standard production level, important events
+- **WARNING** - Problems and network issues
+- **ERROR** - Serious errors requiring attention
+- **CRITICAL** - Fatal errors that stop the program
 
-**Common Configurations:**
+**Quick Setup:**
 ```yaml
-# Production - quiet console, detailed file
-consolelevel: "WARNING"  # Only show problems on console
-loglevel: "INFO"         # Log all important events to file
+# Production: quiet console, detailed logs
+consolelevel: "WARNING"
+loglevel: "INFO"
 
-# Development - see everything
-consolelevel: "DEBUG"    # Show timers and technical details
-loglevel: "TRACE"        # Log everything to file
-
-# Minimal - errors only
-consolelevel: "ERROR"    # Only errors on console
-loglevel: "WARNING"      # Only problems to file
+# Development: see everything
+consolelevel: "DEBUG"
+loglevel: "TRACE"
 ```
 - `"Provider 'xyz' updated successfully. New IP: 1.2.3.4"` - With new IP
 - `"Provider 'xyz' updated successfully. New IP: 1.2.3.4 (previous: 1.2.3.5)"` - With old IP
