@@ -196,27 +196,53 @@ providers:
 
 ### Notifications & Cooldown
 
+You can configure notifications in two ways:
+
+#### 1. Global Notifications (for all providers)
+Configure notifications once in the global `notify` section. All providers will use these settings by default.
+
+#### 2. Provider-Specific Notifications
+Configure notifications individually for each provider. Provider-specific settings override global settings.
+
 You can set an individual cooldown (in minutes) for **each notification service** to avoid notification spam.  
 After a notification, the respective service will wait the specified time before sending another message.  
 If no value or `0` is set, there is **no cooldown** for that service.
 
 ```yaml
+# Global notification configuration (used by all providers unless overridden)
 notify:
   reset_cooldown_on_start: true  # Reset cooldown timers on container start
-  ntfy:
-    cooldown: 10
-    enabled: true
-    url: "https://ntfy.sh/your-topic"
-    notify_on: ["ERROR", "CRITICAL"]
   discord:
-    cooldown: 30
     enabled: true
-    webhook_url: "https://discord.com/api/webhooks/..."
+    webhook_url: "https://discord.com/api/webhooks/global-webhook"
     notify_on: ["ERROR", "CRITICAL"]
-  email:
-    cooldown: 0  # No cooldown for email
-    enabled: true
-    # ...more settings...
+    cooldown: 30
+
+providers:
+  # This provider uses global notification settings
+  - name: regular-provider
+    protocol: cloudflare
+    zone: "example.com"
+    api_token: "token123"
+    record_name: "www.example.com"
+  
+  # This provider has custom notification settings
+  - name: critical-provider
+    protocol: cloudflare
+    zone: "important.com"
+    api_token: "token456"  
+    record_name: "api.important.com"
+    # Provider-specific notifications override global settings
+    notify:
+      discord:
+        enabled: true
+        webhook_url: "https://discord.com/api/webhooks/critical-webhook"
+        notify_on: ["ERROR", "CRITICAL", "UPDATE"]  # More events for critical provider
+        cooldown: 0  # No cooldown for critical notifications
+      email:
+        enabled: true
+        to: "admin@important.com"
+        # ... more email settings
 ```
 
 With  
@@ -226,10 +252,19 @@ reset_cooldown_on_start: true
 you can specify that all cooldown timers are reset when the container starts.  
 Set this option to `false` to let the cooldown continue after a restart.
 
+**Available Notification Services:**
+- **Discord:** Webhook notifications to Discord channels
+- **Slack:** Webhook notifications to Slack channels  
+- **Email:** SMTP email notifications
+- **Telegram:** Bot notifications via Telegram API
+- **ntfy:** Push notifications via ntfy.sh
+- **Webhook:** Custom HTTP webhook calls
+
 **Note:**  
 - The cooldown time is stored separately for each service.
 - The `reset_cooldown_on_start` option applies to all services.
 - After a notification, the cooldown for the respective service is set.
+- Provider-specific notification settings always override global settings.
 
 ---
 
@@ -474,6 +509,9 @@ This will show detailed information about:
 - IP detection process
 - Provider authentication
 - Configuration parsing
+- **Notification processing** (why notifications are sent or suppressed)
+- **Cooldown status** for each notification service
+- **Service configuration checks** (enabled/disabled, level matching, etc.)
 
 ---
 

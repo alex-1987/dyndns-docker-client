@@ -85,6 +85,8 @@ skip_update_on_startup: true  # If true, no provider updates will be performed o
 # If false or not set, an update will always be performed on startup, even if the IP is the same.
 
 # Notifications (all options optional)
+# You can configure notifications either globally (for all providers) or per provider.
+# Provider-specific configuration overrides global configuration.
 notify:
   reset_cooldown_on_start: true  # Cooldown timers are reset on container start
 #  reset_cooldown_on_start: false  # Cooldown timers are not reset on container start
@@ -129,7 +131,7 @@ notify:
   discord:
     enabled: true
     webhook_url: "https://discord.com/api/webhooks/..."
-    notify_on: ["ERROR", "CRITICAL"]
+    notify_on: ["ERROR", "CRITICAL", "UPDATE"]
     cooldown: 0  # No cooldown for Discord
 
   # Slack
@@ -230,6 +232,30 @@ providers:
     extra_params:
       param1: "value1"
       param2: "value2"
+
+  # Example with provider-specific notifications (overrides global config)
+  - name: critical-provider
+    protocol: cloudflare
+    zone: "critical-domain.com"
+    api_token: "your_cloudflare_api_token"
+    record_name: "important.critical-domain.com"
+    # Provider-specific notification configuration
+    notify:
+      discord:
+        enabled: true
+        webhook_url: "https://discord.com/api/webhooks/different-webhook"
+        notify_on: ["ERROR", "CRITICAL", "UPDATE"]  # All events for this critical provider
+        cooldown: 0
+      email:
+        enabled: true
+        to: "admin@critical-domain.com"
+        from: "dyndns-critical@critical-domain.com"
+        smtp_server: "smtp.critical-domain.com"
+        smtp_port: 587
+        smtp_user: "dyndns-user"
+        smtp_pass: "dyndns-password"
+        notify_on: ["ERROR", "CRITICAL"]
+        cooldown: 5
 
 ## Network Interface Configuration
 

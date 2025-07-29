@@ -208,27 +208,53 @@ providers:
 
 ### Benachrichtigungen & Cooldown
 
+Du kannst Benachrichtigungen auf zwei Arten konfigurieren:
+
+#### 1. Globale Benachrichtigungen (für alle Provider)
+Konfiguriere Benachrichtigungen einmal im globalen `notify`-Bereich. Alle Provider verwenden standardmäßig diese Einstellungen.
+
+#### 2. Provider-spezifische Benachrichtigungen  
+Konfiguriere Benachrichtigungen individuell für jeden Provider. Provider-spezifische Einstellungen überschreiben globale Einstellungen.
+
 Du kannst für **jeden Notification-Dienst** einen eigenen Cooldown (in Minuten) setzen, um Benachrichtigungs-Spam zu vermeiden.  
 Nach einer Benachrichtigung wartet der jeweilige Dienst die angegebene Zeit, bevor wieder eine Nachricht gesendet wird.  
 Ist kein Wert gesetzt oder `0`, gibt es **keinen Cooldown** für diesen Dienst.
 
 ```yaml
+# Globale Benachrichtigungskonfiguration (wird von allen Providern verwendet, außer überschrieben)
 notify:
   reset_cooldown_on_start: true  # Cooldown-Zähler wird beim Start zurückgesetzt
-  ntfy:
-    cooldown: 10
-    enabled: true
-    url: "https://ntfy.sh/dein-topic"
-    notify_on: ["ERROR", "CRITICAL"]
   discord:
-    cooldown: 30
     enabled: true
-    webhook_url: "https://discord.com/api/webhooks/..."
+    webhook_url: "https://discord.com/api/webhooks/global-webhook"
     notify_on: ["ERROR", "CRITICAL"]
-  email:
-    cooldown: 0  # Kein Cooldown für E-Mail
-    enabled: true
-    # ...weitere Einstellungen...
+    cooldown: 30
+
+providers:
+  # Dieser Provider verwendet die globalen Benachrichtigungseinstellungen
+  - name: normaler-provider
+    protocol: cloudflare
+    zone: "beispiel.de"
+    api_token: "token123"
+    record_name: "www.beispiel.de"
+  
+  # Dieser Provider hat eigene Benachrichtigungseinstellungen  
+  - name: kritischer-provider
+    protocol: cloudflare
+    zone: "wichtig.de"
+    api_token: "token456"
+    record_name: "api.wichtig.de"
+    # Provider-spezifische Benachrichtigungen überschreiben globale Einstellungen
+    notify:
+      discord:
+        enabled: true
+        webhook_url: "https://discord.com/api/webhooks/critical-webhook"
+        notify_on: ["ERROR", "CRITICAL", "UPDATE"]  # Mehr Events für kritischen Provider
+        cooldown: 0  # Kein Cooldown für kritische Benachrichtigungen
+      email:
+        enabled: true
+        to: "admin@wichtig.de"
+        # ... weitere E-Mail-Einstellungen
 ```
 
 Mit  
@@ -238,10 +264,19 @@ reset_cooldown_on_start: true
 kannst du festlegen, dass beim Start des Containers alle Cooldown-Zähler zurückgesetzt werden.  
 Setze diese Option auf `false`, um den Cooldown auch nach einem Neustart weiterlaufen zu lassen.
 
+**Verfügbare Benachrichtigungsdienste:**
+- **Discord:** Webhook-Benachrichtigungen zu Discord-Kanälen
+- **Slack:** Webhook-Benachrichtigungen zu Slack-Kanälen
+- **E-Mail:** SMTP E-Mail-Benachrichtigungen
+- **Telegram:** Bot-Benachrichtigungen über Telegram API
+- **ntfy:** Push-Benachrichtigungen über ntfy.sh
+- **Webhook:** Benutzerdefinierte HTTP-Webhook-Aufrufe
+
 **Hinweis:**  
 - Die Cooldown-Zeit wird pro Dienst separat gespeichert.
 - Die Option `reset_cooldown_on_start` gilt für alle Dienste gemeinsam.
 - Nach einer Benachrichtigung wird der Cooldown für den jeweiligen Dienst gesetzt.
+- Provider-spezifische Benachrichtigungseinstellungen überschreiben immer globale Einstellungen.
 
 ---
 
@@ -400,6 +435,9 @@ Dies zeigt detaillierte Informationen über:
 - IP-Erkennungsprozess
 - Provider-Authentifizierung
 - Konfigurationsparsing
+- **Benachrichtigungsverarbeitung** (warum Benachrichtigungen gesendet oder unterdrückt werden)
+- **Cooldown-Status** für jeden Benachrichtigungsdienst
+- **Service-Konfigurationsprüfungen** (aktiviert/deaktiviert, Level-Übereinstimmung, etc.)
 
 ---
 
