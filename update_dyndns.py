@@ -19,9 +19,42 @@ import datetime
 
 print("DYNDNS CLIENT STARTUP")
 
-config = None  # global, so update_provider can access it
+class DynDNSState:
+    """Zentrale Zustandsverwaltung für DynDNS Client."""
+    
+    def __init__(self):
+        self.config = None
+        self.log_level = "INFO"
+        self.console_level = "INFO"
+        self.file_logger = None
+        
+        # IP-Tracking
+        self.last_ipv4 = None
+        self.last_ipv6 = None
+        
+        # Netzwerk-Zustand
+        self.resilient_mode = False
+        self.failed_providers = []
+        self.error_count = 0
+        self.last_error_time = 0
+        self.backoff_delay = 60
+    
+    def reset_network_state(self):
+        """Setzt Netzwerk-Fehler-Zustand zurück."""
+        self.resilient_mode = False
+        self.failed_providers = []
+        self.error_count = 0
+    
+    def add_failed_provider(self, provider_name):
+        """Fügt einen fehlgeschlagenen Provider hinzu."""
+        if provider_name not in self.failed_providers:
+            self.failed_providers.append(provider_name)
 
-# Global variables
+# Globale Instanz
+state = DynDNSState()
+
+# Backward compatibility: Keep global references for existing code
+config = None  # global, so update_provider can access it
 log_level = "INFO"         # For file logging
 console_level = "INFO"     # For console output
 file_logger_instance = None
@@ -48,6 +81,7 @@ def setup_logging(loglevel, config=None):
         config: Optional configuration dictionary for file logging
     """
     global log_level, file_logger_instance
+    state.log_level = loglevel
     log_level = loglevel
     
     # Only setup file logging if explicitly enabled
@@ -79,6 +113,9 @@ def setup_logging(loglevel, config=None):
             file_logger_instance.addHandler(file_handler)
             file_logger_instance.propagate = False
             
+            # Update state
+            state.file_logger = file_logger_instance
+            
             # Log initial message to file
             start_msg = f"Log file enabled: {log_file} (max size: {max_size/1024/1024:.1f}MB, backups: {backup_count})"
             file_logger_instance.info(start_msg)
@@ -87,6 +124,10 @@ def setup_logging(loglevel, config=None):
         except Exception as e:
             print(f"{datetime.datetime.now(datetime.timezone.utc).isoformat()} [ERROR] LOGGING --> Failed to setup file logging: {e}")
             file_logger_instance = None
+            state.file_logger = None
+    else:
+        file_logger_instance = None
+        state.file_logger = None
     
     return loglevel
 
@@ -103,9 +144,9 @@ def log(message, level="INFO", section="MAIN", file_only_on_change=False):
     """
     global console_level, log_level, file_logger_instance
     
-    # Get log levels with defaults
-    current_console_level = globals().get('console_level', 'INFO')
-    current_file_level = globals().get('log_level', 'INFO')  # Use log_level for file logging
+    # Get log levels with defaults - use state if available, otherwise globals
+    current_console_level = state.console_level if hasattr(state, 'console_level') else globals().get('console_level', 'INFO')
+    current_file_level = state.log_level if hasattr(state, 'log_level') else globals().get('log_level', 'INFO')
     
     # Log levels for filtering
     levels = ["TRACE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
@@ -122,7 +163,8 @@ def log(message, level="INFO", section="MAIN", file_only_on_change=False):
         print(f"{timestamp} [{level}] {section} --> {message}")
     
     # Additionally log to file if configured
-    if file_logger_instance is not None:
+    current_file_logger = state.file_logger if hasattr(state, 'file_logger') and state.file_logger else file_logger_instance
+    if current_file_logger is not None:
         # Check if we should log to file
         should_log_file = True
         if file_only_on_change and level not in ("ERROR", "CRITICAL"):
@@ -138,7 +180,7 @@ def log(message, level="INFO", section="MAIN", file_only_on_change=False):
         
         if should_log_file:
             file_message = f"{section} --> {message}"
-            log_method = getattr(file_logger_instance, level.lower(), file_logger_instance.info)
+            log_method = getattr(current_file_logger, level.lower(), current_file_logger.info)
             log_method(file_message)
 
 def should_log(level, configured_level):
@@ -1011,6 +1053,10 @@ def handle_no_ip_available(consecutive_failures, config):
 
 def main():
     global config, log_level, console_level
+    
+    # Initialize state configuration
+    state.config = None
+    
     config_path = 'config/config.yaml'
     if not os.path.exists(config_path):
         setup_logging("INFO")
@@ -1026,14 +1072,20 @@ def main():
     with open(config_path, 'r') as f:
         try:
             config = yaml.safe_load(f)
+            state.config = config  # Update state
         except Exception as e:
             setup_logging("INFO")
             log(f"Error loading config.yaml: {e}", "ERROR")
             sys.exit(1)
     loglevel = config.get("loglevel", "INFO")
     consolelevel = config.get("consolelevel", loglevel)
+    
+    # Update both state and global variables for backward compatibility
     log_level = loglevel
     console_level = consolelevel
+    state.log_level = loglevel
+    state.console_level = consolelevel
+    
     setup_logging(loglevel, config)
     
     last_config_mtime = os.path.getmtime(config_path)
@@ -1123,10 +1175,12 @@ def main():
         log("⚠️ Keine gültige IP-Adresse konnte ermittelt werden. Aktiviere resilientes Netzwerkverhalten...", "WARNING", "MAIN")
         # Setze flag für resiliente Hauptschleife
         resilient_mode = True
+        state.resilient_mode = True
         test_ip = None
         test_ip6 = None
     else:
         resilient_mode = False
+        state.resilient_mode = False
     
     # --- PATCH: skip_update_on_startup ---
     skip_on_startup = config.get("skip_update_on_startup", False)
@@ -1142,18 +1196,27 @@ def main():
         save_last_ip("v6", test_ip6)
         last_ip = test_ip
         last_ip6 = test_ip6
+        # Update state
+        state.last_ipv4 = test_ip
+        state.last_ipv6 = test_ip6
     else:
         log("Starting initial update run for all providers...", section="MAIN")
         failed_providers = []
+        state.failed_providers = []
         for provider in providers:
             result = update_provider(provider, test_ip, test_ip6)
             section = provider.get('name', 'PROVIDER').upper()
             if not (result or result == "nochg"):
                 log(f"Provider '{provider.get('name')}' could not be updated initially.", "WARNING", section=section)
                 failed_providers.append(provider)
+                state.add_failed_provider(provider.get('name', 'unknown'))
         save_last_ip("v4", test_ip)
         save_last_ip("v6", test_ip6)
         last_ip = test_ip
+        last_ip6 = test_ip6
+        # Update state
+        state.last_ipv4 = test_ip
+        state.last_ipv6 = test_ip6
         last_ip6 = test_ip6
     # --- END PATCH ---
 
@@ -1173,6 +1236,7 @@ def main():
             with open(config_path, 'r') as f:
                 try:
                     config = yaml.safe_load(f)
+                    state.config = config  # Update state
                 except Exception as e:
                     log(f"Error loading config.yaml after change: {e}\nPlease check the file and refer to config.example.yaml.", "ERROR")
                     continue
@@ -1185,8 +1249,11 @@ def main():
             new_consolelevel = config.get("consolelevel", new_loglevel)
             if new_loglevel != log_level or new_consolelevel != console_level:
                 log(f"Updating log levels: loglevel={new_loglevel}, consolelevel={new_consolelevel}", "INFO", section="MAIN")
+                # Update both state and global variables
                 log_level = new_loglevel
                 console_level = new_consolelevel
+                state.log_level = new_loglevel
+                state.console_level = new_consolelevel
                 setup_logging(new_loglevel, config)
             
             timer = config.get('timer', 300)
@@ -1231,21 +1298,26 @@ def main():
             if current_ip6:
                 log(f"Current public IPv6: {current_ip6}", "TRACE", section="MAIN")
             failed_providers = []
+            state.failed_providers = []
             for provider in providers:
                 result = update_provider(provider, current_ip, current_ip6)
                 section = provider.get('name', 'PROVIDER').upper()
                 if not result:  # update_provider returns True for success (updated/nochg), False for failure
                     log(f"Provider '{provider.get('name')}' could not be updated after config change.", "WARNING", section=section)
                     failed_providers.append(provider)
+                    state.add_failed_provider(provider.get('name', 'unknown'))
             last_ip = current_ip
             last_ip6 = current_ip6
+            # Update state
+            state.last_ipv4 = current_ip
+            state.last_ipv6 = current_ip6
             elapsed = 0
             log(f"Next run in {timer} seconds...", "TRACE", section="MAIN")
             continue
 
         # Timer-based update with resilient network handling
         if elapsed >= timer:
-            if resilient_mode:
+            if resilient_mode or state.resilient_mode:
                 # Verwende resiliente IP-Ermittlung
                 current_ip = get_current_ip_resilient(config)
                 
@@ -1278,6 +1350,7 @@ def main():
                     
                     # Resilient mode deaktivieren wenn wir wieder IPs haben
                     resilient_mode = False
+                    state.resilient_mode = False
                     
                     # Timer auf ursprünglichen Wert zurücksetzen
                     timer = config.get('timer', 300)
@@ -1314,6 +1387,7 @@ def main():
                 if not current_ip and not current_ip6:
                     log("🔄 Aktiviere resilientes Netzwerkverhalten aufgrund von Fehlern...", "WARNING", "MAIN")
                     resilient_mode = True
+                    state.resilient_mode = True
                     continue
                 
             # Check for IP change or failed providers
@@ -1333,7 +1407,7 @@ def main():
                     log(f"Current public IPv6: {current_ip6}", "TRACE", section="MAIN")
                     
             # Perform updates if needed
-            if ip_changed or ip6_changed or failed_providers:
+            if ip_changed or ip6_changed or failed_providers or state.failed_providers:
                 if ip_changed:
                     log(f"New IP detected: {current_ip} (previous: {last_ip}) – update will be performed.", section="MAIN")
                 if ip6_changed:
@@ -1342,6 +1416,7 @@ def main():
                 # Update all providers (retry failed providers always)
                 retry_providers = failed_providers.copy()
                 failed_providers = []
+                state.failed_providers = []
                 
                 for provider in providers:
                     # Retry if provider was in failed_providers or IP changed
@@ -1351,9 +1426,11 @@ def main():
                             section = provider.get('name', 'PROVIDER').upper()
                             if not result:  # update_provider returns True for success (updated/nochg), False for failure
                                 failed_providers.append(provider)
+                                state.add_failed_provider(provider.get('name', 'unknown'))
                         except Exception as e:
                             log(f"Provider update failed: {provider.get('name')} - {e}", "ERROR", "PROVIDER")
                             failed_providers.append(provider)
+                            state.add_failed_provider(provider.get('name', 'unknown'))
                             
                 # Save last known IPs
                 if current_ip:
@@ -1363,6 +1440,9 @@ def main():
                     
                 last_ip = current_ip
                 last_ip6 = current_ip6
+                # Update state
+                state.last_ipv4 = current_ip
+                state.last_ipv6 = current_ip6
                 elapsed = 0
                 log(f"Next run in {timer} seconds...", "TRACE", section="MAIN")
             else:
