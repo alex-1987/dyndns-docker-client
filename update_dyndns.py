@@ -283,7 +283,8 @@ class BaseProvider(ABC):
     def __init__(self, config):
         self.config = config
         self.name = config.get('name', 'unknown')
-        self.provider_type = config.get('type', 'unknown')
+        # Support both 'type' and 'protocol' for backward compatibility
+        self.provider_type = config.get('type', config.get('protocol', 'unknown'))
     
     def update_unified(self, current_ip, current_ip6):
         """Hauptupdate-Methode mit einheitlicher Logik."""
@@ -389,7 +390,12 @@ class DynDNS2Provider(BaseProvider):
 # Provider-Factory
 def create_provider(provider_config):
     """Erstellt Provider-Instanz basierend auf Typ."""
-    provider_type = provider_config.get('type', '').lower()
+    # Support both 'type' and 'protocol' for backward compatibility
+    provider_type = provider_config.get('type', provider_config.get('protocol', '')).lower()
+    
+    if not provider_type:
+        available_types = 'cloudflare, ipv64, dyndns2'
+        raise ValueError(f"No provider type specified. Available types: {available_types}")
     
     providers = {
         'cloudflare': CloudflareProvider,
@@ -399,7 +405,8 @@ def create_provider(provider_config):
     
     provider_class = providers.get(provider_type)
     if not provider_class:
-        raise ValueError(f"Unknown provider type: {provider_type}")
+        available_types = ', '.join(providers.keys())
+        raise ValueError(f"Unknown provider type: '{provider_type}'. Available types: {available_types}")
     
     return provider_class(provider_config)
 
