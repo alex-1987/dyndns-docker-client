@@ -2,6 +2,46 @@
 
 *Implementierung der zweiten kritischen Verbesserung aus dem CODE_IMPROVEMENT_ROADMAP.md*
 
+## UPDATE: Field Name Compatibility Fix (2025-07-29)
+
+**CRITICAL PRODUCTION ISSUE RESOLVED:**
+
+After successful implementation and testing, the unified provider architecture failed in production due to configuration field name mismatches:
+
+### Issues Identified:
+- ❌ Config uses `protocol` field but code expected `type`
+- ❌ Cloudflare uses `api_token` field but code expected `token` 
+- ❌ All providers fell back to legacy implementation 100% of the time
+- ❌ "Unknown provider type:" errors in production logs
+
+### Fixes Implemented:
+1. **create_provider() Function Enhanced:**
+   - ✅ Now supports both `protocol` and `type` fields for backward compatibility
+   - ✅ Improved error messages with available provider types list
+   - ✅ Case-insensitive provider type matching
+
+2. **BaseProvider Class Updated:**
+   - ✅ Handles both field naming conventions in constructor
+   - ✅ Maintains backward compatibility with existing configs
+
+3. **CloudflareProvider Fixed:**
+   - ✅ Supports both `api_token` (actual config format) and `token` (legacy) field names
+   - ✅ Proper validation for required fields
+
+4. **Comprehensive Testing Added:**
+   - ✅ test_provider_integration.py with real config field name tests
+   - ✅ Updated main test suite with provider creation tests
+   - ✅ Backward compatibility test coverage
+   - ✅ All 26 existing tests still pass
+
+### Result:
+- ✅ Provider creation now works with real config.example.yaml field names
+- ✅ Unified architecture can properly instantiate providers  
+- ✅ Configuration field name mismatches resolved
+- ✅ Production-ready implementation
+
+---
+
 ## Was wurde umgesetzt?
 
 Die **zweite kritische Verbesserung** aus dem CODE_IMPROVEMENT_ROADMAP.md wurde erfolgreich implementiert:

@@ -334,8 +334,18 @@ class BaseProvider(ABC):
 class CloudflareProvider(BaseProvider):
     """Cloudflare-spezifische Implementierung."""
     
+    def __init__(self, config):
+        super().__init__(config)
+        # Validate configuration during initialization
+        self.validate_config()
+    
     def validate_config(self):
-        required = ['api_token', 'zone', 'record_name']
+        # Support both 'api_token' and 'token' field names
+        has_token = self.config.get('api_token') or self.config.get('token')
+        if not has_token:
+            raise ValueError("Missing Cloudflare config: need 'api_token' or 'token' field")
+        
+        required = ['zone', 'record_name']
         missing = [f for f in required if not self.config.get(f)]
         if missing:
             raise ValueError(f"Missing Cloudflare config: {missing}")
@@ -347,6 +357,11 @@ class CloudflareProvider(BaseProvider):
 
 class IPV64Provider(BaseProvider):
     """IPV64-spezifische Implementierung."""
+    
+    def __init__(self, config):
+        super().__init__(config)
+        # Validate configuration during initialization
+        self.validate_config()
     
     def validate_config(self):
         required = ['token']
@@ -365,6 +380,11 @@ class IPV64Provider(BaseProvider):
 
 class DynDNS2Provider(BaseProvider):
     """DynDNS2-spezifische Implementierung."""
+    
+    def __init__(self, config):
+        super().__init__(config)
+        # Validate configuration during initialization
+        self.validate_config()
     
     def validate_config(self):
         required = ['url']
