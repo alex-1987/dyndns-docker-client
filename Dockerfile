@@ -8,7 +8,7 @@ RUN pip install --no-cache-dir requests pyyaml
 # Kopiere Quellcode und Beispiel-Konfiguration ins Image
 COPY update_dyndns.py /app/update_dyndns.py
 COPY notify.py /app/notify.py
-COPY config.example.yaml /app/config.example.yaml
+COPY config/config.example.yaml /app/config.example.yaml
 
 # Erstelle Config-Ordner (falls nicht durch Volume überschrieben)
 RUN mkdir -p /app/config
