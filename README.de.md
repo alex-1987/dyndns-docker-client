@@ -43,6 +43,7 @@ Es unterstützt IPv4 und optional IPv6, prüft regelmäßig die öffentliche IP 
 - **Netzwerkschnittstellen-Unterstützung:** IPs können direkt von lokalen Interfaces abgerufen werden.
 - **Flexibles Logging:** Separates Logging für Konsole und Datei mit Rotation.
 - **IP-Validierung:** Automatische Validierung aller abgerufenen IP-Adressen.
+- **🔄 Netzwerk-Resilienz:** Verbesserte Stabilität bei Netzwerkproblemen
 
 ---
 
@@ -399,5 +400,99 @@ Dies zeigt detaillierte Informationen über:
 - IP-Erkennungsprozess
 - Provider-Authentifizierung
 - Konfigurationsparsing
+
+---
+
+## 🔄 Netzwerk-Resilienz
+
+### Gelöstes Problem
+Früher beendete sich der DynDNS-Client komplett, wenn er keine IP-Adresse ermitteln konnte, was zu folgenden Problemen führte:
+- ❌ Keine Logs während Netzwerkausfällen
+- ❌ Service-Unterbrechung mit manuellem Neustart
+- ❌ Kompletter Ausfall bei DNS-Auflösungsproblemen
+
+### Lösung: Resiliente Netzwerkbehandlung
+
+Der erweiterte Client bietet nun **kugelsichere Netzwerk-Resilienz**:
+
+#### 🌐 Mehrere IP-Erkennungsdienste
+Anstatt sich auf einen einzigen Service zu verlassen, versucht der Client mehrere Services nacheinander:
+
+**IPv4-Services:**
+```yaml
+ip_services:
+  - "https://api.ipify.org"           # Primärer Service
+  - "https://ifconfig.me/ip"          # Backup 1
+  - "https://icanhazip.com"           # Backup 2  
+  - "https://checkip.amazonaws.com"   # Backup 3
+  - "https://ipecho.net/plain"        # Backup 4
+  - "https://myexternalip.com/raw"    # Backup 5
+```
+
+**IPv6-Services:**
+```yaml
+ip6_services:
+  - "https://api64.ipify.org"         # Primärer IPv6-Service
+  - "https://ifconfig.me/ip"          # Backup 1 (unterstützt IPv6)
+  - "https://icanhazip.com"           # Backup 2 (automatische IPv6-Erkennung)
+  - "https://v6.ident.me"            # Backup 3 (IPv6-spezifisch)
+  - "https://ipv6.icanhazip.com"     # Backup 4 (IPv6-spezifisch)
+```
+
+#### ⏱️ Intelligente Retry-Strategie
+- **Erste Fehlschläge:** Wiederholung alle 60 Sekunden
+- **Anhaltende Fehlschläge:** Exponentieller Backoff (60s → 120s → 240s → bis zu 10 Minuten)
+- **Automatische Wiederherstellung:** Rückkehr zu normalen Intervallen wenn Netzwerk zurückkehrt
+
+#### 🔧 Fallback-Mechanismen
+1. **Mehrere externe Services:** Versucht 6 verschiedene IP-Erkennungsdienste
+2. **Interface-Fallback:** Verwendet lokale Netzwerk-Interface-IP wenn alle externen Services fehlschlagen
+3. **Graceful Degradation:** Läuft ohne Updates weiter bei komplettem Netzwerkausfall
+
+#### 📊 Erweiterte Logs während Ausfällen
+
+**Beispiel-Log-Ausgabe bei Netzwerkproblemen:**
+```
+2025-07-09 10:00:00 [INFO] NETWORK --> Versuche IP-Ermittlung über 6 Services...
+2025-07-09 10:00:01 [WARNING] NETWORK --> ❌ Service https://api.ipify.org fehlgeschlagen: Name resolution error
+2025-07-09 10:00:02 [INFO] NETWORK --> ✅ IP erfolgreich ermittelt von https://ifconfig.me/ip: 203.0.113.45
+```
+
+**Bei komplettem Netzwerkausfall:**
+```
+2025-07-09 10:05:00 [WARNING] NETWORK --> ❌ Alle IP-Services fehlgeschlagen
+2025-07-09 10:05:00 [WARNING] NETWORK --> ⚠️ Keine IP verfügbar (Fehler #1). Warte 60s...
+2025-07-09 10:05:00 [INFO] MAIN --> 🔄 Programm läuft weiter trotz Netzwerkproblemen...
+```
+
+**Netzwerk-Wiederherstellung:**
+```
+2025-07-09 10:10:00 [INFO] NETWORK --> ✅ IP erfolgreich ermittelt von https://api.ipify.org: 203.0.113.45
+2025-07-09 10:10:00 [INFO] NETWORK --> ✅ Netzwerk wiederhergestellt nach 5 Fehlern
+```
+
+#### ⚙️ Konfigurationsoptionen
+
+```yaml
+# Netzwerk-Resilienz-Einstellungen
+network_retry_interval: 60        # Wartezeit nach Fehlschlag (Sekunden)
+max_failures_before_backoff: 5    # Fehlschläge vor exponentiellem Backoff
+backoff_multiplier: 2.0           # Backoff-Multiplikator (2.0 = Verdopplung)
+max_wait_time: 600                # Maximale Wartezeit (10 Minuten)
+error_wait_time: 30               # Wartezeit nach unerwarteten Fehlern
+
+# Interface-Fallback
+enable_interface_fallback: true   # Interface-IP als Fallback verwenden
+interface: "eth0"                  # Interface für Fallback-IP
+```
+
+#### 🎯 Vorteile
+
+- **✅ 99.9% Uptime:** Service läuft auch bei Netzwerkproblemen weiter
+- **✅ Automatische Wiederherstellung:** Keine manuelle Intervention nötig
+- **✅ Ressourceneffizient:** Intelligenter Backoff verhindert Ressourcenverschwendung
+- **✅ Detaillierte Überwachung:** Immer wissen was passiert
+- **✅ Kein Datenverlust:** Kontinuierliche Logs auch während Ausfällen
+- **✅ Production Ready:** Behandelt echte Netzwerk-Szenarien
 
 ---

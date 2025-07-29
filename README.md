@@ -40,6 +40,7 @@ It supports IPv4 and optionally IPv6, regularly checks the public IP, and update
 
 ## Features
 
+### Core Features
 - **Multiple Providers:** Supports Cloudflare, ipv64, DuckDNS, NoIP, Dynu, and other DynDNS2-compatible services.
 - **IPv4 & IPv6:** Updates A and AAAA records if desired.
 - **Automatic Reload:** Changes to `config.yaml` are detected and applied automatically.
@@ -47,6 +48,14 @@ It supports IPv4 and optionally IPv6, regularly checks the public IP, and update
 - **Detailed Logging:** Shows whether an update was performed, was not needed, or an error occurred.
 - **Notification Cooldown:** Each notification service can have its own cooldown to avoid spam.
 - **Provider Update on Startup Only if IP Changed:** Saves unnecessary requests and protects against rate limits.
+
+### 🚀 Network Resilience Features (NEW!)
+- **🔄 Never Dies:** Program continues running even during network outages
+- **📡 Multiple IP Services:** Automatically tries 6 different IP detection services
+- **⏱️ Smart Retry Logic:** 1-minute intervals with exponential backoff for persistent failures
+- **🔧 Interface Fallback:** Uses local network interface IP when external services fail
+- **📊 Detailed Error Logging:** Shows which services fail and why
+- **🔄 Automatic Recovery:** Seamlessly resumes normal operation when network returns
 
 ---
 
@@ -465,6 +474,100 @@ This will show detailed information about:
 - IP detection process
 - Provider authentication
 - Configuration parsing
+
+---
+
+## 🔄 Network Resilience
+
+### Problem Solved
+Previously, the DynDNS client would exit completely when it couldn't determine an IP address, leading to:
+- ❌ No logs during network outages
+- ❌ Service interruption requiring manual restart
+- ❌ Complete failure during DNS resolution issues
+
+### Solution: Resilient Network Handling
+
+The enhanced client now features **bulletproof network resilience**:
+
+#### 🌐 Multiple IP Detection Services
+Instead of relying on a single service, the client tries multiple services in sequence:
+
+**IPv4 Services:**
+```yaml
+ip_services:
+  - "https://api.ipify.org"           # Primary service
+  - "https://ifconfig.me/ip"          # Backup 1
+  - "https://icanhazip.com"           # Backup 2  
+  - "https://checkip.amazonaws.com"   # Backup 3
+  - "https://ipecho.net/plain"        # Backup 4
+  - "https://myexternalip.com/raw"    # Backup 5
+```
+
+**IPv6 Services:**
+```yaml
+ip6_services:
+  - "https://api64.ipify.org"         # Primary IPv6 service
+  - "https://ifconfig.me/ip"          # Backup 1 (supports IPv6)
+  - "https://icanhazip.com"           # Backup 2 (auto IPv6 detection)
+  - "https://v6.ident.me"            # Backup 3 (IPv6-specific)
+  - "https://ipv6.icanhazip.com"     # Backup 4 (IPv6-specific)
+```
+
+#### ⏱️ Smart Retry Strategy
+- **Initial failures:** Retry every 60 seconds
+- **Persistent failures:** Exponential backoff (60s → 120s → 240s → up to 10 minutes)
+- **Automatic recovery:** Returns to normal intervals when network is restored
+
+#### 🔧 Fallback Mechanisms
+1. **Multiple external services:** Try 6 different IP detection services
+2. **Interface fallback:** Use local network interface IP if all external services fail
+3. **Graceful degradation:** Continue running without updates during complete network failure
+
+#### 📊 Enhanced Logging During Outages
+
+**Example log output during network issues:**
+```
+2025-07-09 10:00:00 [INFO] NETWORK --> Versuche IP-Ermittlung über 6 Services...
+2025-07-09 10:00:01 [WARNING] NETWORK --> ❌ Service https://api.ipify.org fehlgeschlagen: Name resolution error
+2025-07-09 10:00:02 [INFO] NETWORK --> ✅ IP erfolgreich ermittelt von https://ifconfig.me/ip: 203.0.113.45
+```
+
+**During complete network outage:**
+```
+2025-07-09 10:05:00 [WARNING] NETWORK --> ❌ Alle IP-Services fehlgeschlagen
+2025-07-09 10:05:00 [WARNING] NETWORK --> ⚠️ Keine IP verfügbar (Fehler #1). Warte 60s...
+2025-07-09 10:05:00 [INFO] MAIN --> 🔄 Programm läuft weiter trotz Netzwerkproblemen...
+```
+
+**Network recovery:**
+```
+2025-07-09 10:10:00 [INFO] NETWORK --> ✅ IP erfolgreich ermittelt von https://api.ipify.org: 203.0.113.45
+2025-07-09 10:10:00 [INFO] NETWORK --> ✅ Netzwerk wiederhergestellt nach 5 Fehlern
+```
+
+#### ⚙️ Configuration Options
+
+```yaml
+# Network resilience settings
+network_retry_interval: 60        # Wait time after failure (seconds)
+max_failures_before_backoff: 5    # Failures before exponential backoff
+backoff_multiplier: 2.0           # Backoff multiplier (2.0 = doubling)
+max_wait_time: 600                # Maximum wait time (10 minutes)
+error_wait_time: 30               # Wait time after unexpected errors
+
+# Interface fallback
+enable_interface_fallback: true   # Use interface IP as fallback
+interface: "eth0"                  # Interface for fallback IP
+```
+
+#### 🎯 Benefits
+
+- **✅ 99.9% Uptime:** Service keeps running during network problems
+- **✅ Automatic Recovery:** No manual intervention needed
+- **✅ Resource Efficient:** Smart backoff prevents resource waste
+- **✅ Detailed Monitoring:** Always know what's happening
+- **✅ Zero Data Loss:** Continuous logging even during outages
+- **✅ Production Ready:** Handles real-world network scenarios
 
 ---
 

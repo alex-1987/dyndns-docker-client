@@ -24,8 +24,10 @@ def human_error_message(e, context=""):
 def _cooldown_file(service):
     """
     Returns the path to the cooldown file for the given notification service.
+    Uses OS-appropriate temporary directory for cross-platform compatibility.
     """
-    return f"/tmp/notify_cooldown_{service}.txt"
+    import tempfile
+    return os.path.join(tempfile.gettempdir(), f"notify_cooldown_{service}.txt")
 
 def _can_send_notification(service, cooldown_minutes):
     """
