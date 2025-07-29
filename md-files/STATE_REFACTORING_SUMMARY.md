@@ -90,7 +90,7 @@ state = DynDNSState()
 ## 📁 Geänderte Dateien
 
 1. **`update_dyndns.py`** - Hauptimplementierung der DynDNSState-Klasse
-2. ~~**`test_state_refactoring.py`** - Neues Test-Script für State-Funktionalität~~ (entfernt nach erfolgreichem Test)
+2. **`test_state_refactoring.py`** - Neues Test-Script für State-Funktionalität
 
 ## 🔄 Nächste Schritte
 
@@ -112,8 +112,9 @@ python -m py_compile update_dyndns.py
 python tests/test_basic_fixed.py  
 # ✅ 22/22 Tests bestanden
 
-# New State Tests (temporär verwendet, dann entfernt)
-# ✅ Alle State-Tests bestanden - Funktionalität verifiziert
+# New State Tests
+python test_state_refactoring.py
+# ✅ Alle State-Tests bestanden
 ```
 
 ---
