@@ -1,0 +1,12 @@
+# Test dependencies for GitHub Actions CI/CD
+# All tests work with built-in unittest, but these tools provide CI/CD features
+
+# Coverage reporting for GitHub Actions
+coverage>=6.0
+
+# Security scanning tools (used in security-test job)  
+bandit>=1.7.0
+safety>=2.3.0
+
+# Optional: pytest for compatibility (tests work without it)
+pytest>=6.0
