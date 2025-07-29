@@ -198,23 +198,14 @@ def send_notifications(config, level, message, subject=None, service_name=None):
 
     # Discord
     discord_cfg = config.get("discord")
-    print(f"DEBUG: Discord config found: {discord_cfg is not None}")
-    if discord_cfg:
-        print(f"DEBUG: Discord enabled: {discord_cfg.get('enabled')}")
-        print(f"DEBUG: Level '{level}' in notify_on {discord_cfg.get('notify_on', [])}: {level in discord_cfg.get('notify_on', [])}")
-    
     if discord_cfg and discord_cfg.get("enabled") and level in discord_cfg.get("notify_on", []):
         cooldown = discord_cfg.get("cooldown", 0)
-        print(f"DEBUG: Discord cooldown check - can send: {_can_send_notification('discord', cooldown)}")
         if _can_send_notification("discord", cooldown):
-            print(f"DEBUG: Sending Discord notification...")
             notify_discord(discord_cfg["webhook_url"], message, service_name)
             _update_last_notification_time("discord")
             log_notify("discord", True)
         else:
             log_notify("discord", False, "cooldown active")
-    else:
-        print(f"DEBUG: Discord notification skipped - config ok: {discord_cfg is not None}, enabled: {discord_cfg.get('enabled') if discord_cfg else 'N/A'}, level check: {level in discord_cfg.get('notify_on', []) if discord_cfg else 'N/A'}")
 
     # Slack
     slack_cfg = config.get("slack")

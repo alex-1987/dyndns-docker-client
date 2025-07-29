@@ -320,15 +320,31 @@ class BaseProvider(ABC):
         pass
     
     def send_success_notification(self, ip):
-        """Sendet Erfolgs-Benachrichtigung."""
+        """Sendet Erfolgs-Benachrichtigung mit Fallback auf globale Konfiguration."""
         msg = f"Provider '{self.name}' updated successfully. New IP: {ip}"
-        send_notifications(self.config.get("notify"), "UPDATE", msg, 
+        
+        # Provider-spezifische notify-Konfiguration verwenden, falls vorhanden
+        notify_config = self.config.get("notify")
+        
+        # Fallback auf globale notify-Konfiguration wenn keine provider-spezifische vorhanden
+        if not notify_config and state.config:
+            notify_config = state.config.get("notify")
+        
+        send_notifications(notify_config, "UPDATE", msg, 
                          f"🟢 **{self.name}** wurde erfolgreich aktualisiert!")
     
     def send_error_notification(self, error):
-        """Sendet Fehler-Benachrichtigung."""
+        """Sendet Fehler-Benachrichtigung mit Fallback auf globale Konfiguration."""
         msg = f"Provider '{self.name}' update failed: {error}"
-        send_notifications(self.config.get("notify"), "ERROR", msg,
+        
+        # Provider-spezifische notify-Konfiguration verwenden, falls vorhanden
+        notify_config = self.config.get("notify")
+        
+        # Fallback auf globale notify-Konfiguration wenn keine provider-spezifische vorhanden
+        if not notify_config and state.config:
+            notify_config = state.config.get("notify")
+        
+        send_notifications(notify_config, "ERROR", msg,
                          f"🔴 **{self.name}** Update fehlgeschlagen!")
 
 class CloudflareProvider(BaseProvider):
