@@ -1443,7 +1443,7 @@ def main():
     elapsed = 0
     check_interval = 2  # Seconds, how often to check for config changes
 
-    log(f"Next run in {timer} seconds...", "TRACE", section="MAIN")
+    log(f"Next run in {timer} seconds...", "DEBUG", section="MAIN")
 
     while True:
         time.sleep(check_interval)
@@ -1532,7 +1532,7 @@ def main():
             state.last_ipv4 = current_ip
             state.last_ipv6 = current_ip6
             elapsed = 0
-            log(f"Next run in {timer} seconds...", "TRACE", section="MAIN")
+            log(f"Next run in {timer} seconds...", "DEBUG", section="MAIN")
             continue
 
         # Timer-based update with resilient network handling
@@ -1560,7 +1560,7 @@ def main():
                     # Überschreibe timer temporär für Backoff
                     original_timer = timer
                     timer = wait_time
-                    log(f"⏳ Nächster IP-Versuch in {timer} Sekunden...", "TRACE", "MAIN")
+                    log(f"⏳ Nächster IP-Versuch in {timer} Sekunden...", "DEBUG", "MAIN")
                     continue
                 else:
                     # IP erfolgreich ermittelt - Reset failure counter
@@ -1664,14 +1664,14 @@ def main():
                 state.last_ipv4 = current_ip
                 state.last_ipv6 = current_ip6
                 elapsed = 0
-                log(f"Next run in {timer} seconds...", "TRACE", section="MAIN")
+                log(f"Next run in {timer} seconds...", "DEBUG", section="MAIN")
             else:
                 if current_ip:
                     log(f"IP unchanged ({current_ip}), no update needed.", "TRACE", section="MAIN")
                 if current_ip6:
                     log(f"IPv6 unchanged ({current_ip6}), no update needed.", "TRACE", section="MAIN")
                 elapsed = 0
-                log(f"Next run in {timer} seconds...", "TRACE", section="MAIN")
+                log(f"Next run in {timer} seconds...", "DEBUG", section="MAIN")
 
 if __name__ == "__main__":
     main()
