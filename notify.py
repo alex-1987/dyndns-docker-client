@@ -330,11 +330,13 @@ def send_notifications(config, level, message, subject=None, service_name=None):
             print(f"{datetime.datetime.now().isoformat()} [{lv}] {section} --> {msg}")
     
     # Debug: Overall notification call
+    log(f"=== NOTIFICATION DEBUG START ===", "DEBUG", "NOTIFY")
     log(f"send_notifications called: level='{level}', message='{message[:50]}...', service_name='{service_name}'", "DEBUG", "NOTIFY")
     
     # Check if configuration exists
     if not config:
         log("No notification configuration found - notifications disabled", "DEBUG", "NOTIFY")
+        log(f"=== NOTIFICATION DEBUG END (no config) ===", "DEBUG", "NOTIFY")
         return
         
     log(f"Notification config found with {len(config)} services configured", "DEBUG", "NOTIFY")
@@ -356,14 +358,14 @@ def send_notifications(config, level, message, subject=None, service_name=None):
         logger = logging.getLogger("NOTIFY")
         if sent:
             logger.info(f"Notification sent via {service}.")
-            log(f"✅ Notification sent via {service}", "INFO", "NOTIFY")
+            log(f"Notification sent via {service}", "INFO", "NOTIFY")
         else:
             logger.info(f"Notification via {service} suppressed ({reason}).")
-            log(f"❌ Notification via {service} suppressed: {reason}", "DEBUG", "NOTIFY")
+            log(f"Notification via {service} suppressed: {reason}", "DEBUG", "NOTIFY")
     
     # Helper for debug logging of service checks
     def debug_service_check(service_name, cfg, level, enabled_check, level_check, cooldown_check=None):
-        log(f"🔍 Checking {service_name} service:", "DEBUG", "NOTIFY")
+        log(f"Checking {service_name} service:", "DEBUG", "NOTIFY")
         log(f"  - Config found: {cfg is not None}", "DEBUG", "NOTIFY")
         log(f"  - Enabled: {enabled_check}", "DEBUG", "NOTIFY") 
         log(f"  - Level '{level}' in notify_on {cfg.get('notify_on', []) if cfg else []}: {level_check}", "DEBUG", "NOTIFY")
@@ -520,4 +522,4 @@ def send_notifications(config, level, message, subject=None, service_name=None):
         elif not level_match:
             log_notify("email", False, f"level '{level}' not in notify_on list")
     
-    log(f"Notification processing completed for level '{level}'", "DEBUG", "NOTIFY")
+    log(f"=== NOTIFICATION DEBUG END (processing completed for level '{level}') ===", "DEBUG", "NOTIFY")

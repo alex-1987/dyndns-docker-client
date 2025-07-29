@@ -4,6 +4,8 @@ import time
 import requests
 import yaml
 import logging
+import struct
+import datetime
 from notify import send_notifications
 import socket
 import subprocess
@@ -1014,7 +1016,7 @@ def get_public_ip_with_fallback(config):
             ip = get_public_ip(service)
             
             if ip and validate_ipv4(ip):
-                log(f"✅ IP erfolgreich ermittelt von {service}: {ip}", "INFO", "NETWORK")
+                log(f"IP erfolgreich ermittelt von {service}: {ip}", "INFO", "NETWORK")
                 return ip
             else:
                 log(f"⚠️ Ungültige IP von {service}: {ip}", "WARNING", "NETWORK")
@@ -1071,7 +1073,7 @@ def get_public_ipv6_with_fallback(config):
             ip6 = get_public_ipv6(service)
             
             if ip6 and validate_ipv6(ip6):
-                log(f"✅ IPv6 erfolgreich ermittelt von {service}: {ip6}", "INFO", "NETWORK")
+                log(f"IPv6 erfolgreich ermittelt von {service}: {ip6}", "INFO", "NETWORK")
                 return ip6
             else:
                 log(f"⚠️ Ungültige IPv6 von {service}: {ip6}", "WARNING", "NETWORK")
@@ -1106,7 +1108,7 @@ def get_interface_ip_fallback(config):
         # Verwende bestehende get_interface_ipv4 Funktion
         ip = get_interface_ipv4(interface)
         if ip and validate_ipv4(ip):
-            log(f"✅ Interface-IP ermittelt: {ip}", "INFO", "NETWORK")
+            log(f"Interface-IP ermittelt: {ip}", "INFO", "NETWORK")
             return ip
             
     except Exception as e:
@@ -1121,7 +1123,7 @@ def get_interface_ip_fallback(config):
         s.close()
         
         if ip and validate_ipv4(ip) and not ip.startswith('127.'):
-            log(f"✅ Socket-Fallback IP: {ip}", "INFO", "NETWORK")
+            log(f"Socket-Fallback IP: {ip}", "INFO", "NETWORK")
             return ip
             
     except Exception as e:
@@ -1151,7 +1153,7 @@ def get_interface_ipv6_fallback(config):
         # Verwende bestehende get_interface_ipv6 Funktion
         ip6 = get_interface_ipv6(interface6)
         if ip6 and validate_ipv6(ip6):
-            log(f"✅ Interface-IPv6 ermittelt: {ip6}", "INFO", "NETWORK")
+            log(f"Interface-IPv6 ermittelt: {ip6}", "INFO", "NETWORK")
             return ip6
             
     except Exception as e:
@@ -1169,7 +1171,7 @@ def get_current_ip_resilient(config):
     Returns:
         Aktuelle IP-Adresse oder None
     """
-    log("🔍 Starte resiliente IP-Ermittlung...", "TRACE", "NETWORK")
+    log("Starte resiliente IP-Ermittlung...", "TRACE", "NETWORK")
     
     # 1. Versuche externe IP-Services
     ip = get_public_ip_with_fallback(config)
@@ -1178,7 +1180,7 @@ def get_current_ip_resilient(config):
     
     # 2. Fallback auf Interface-IP (nur wenn aktiviert)
     if config.get('enable_interface_fallback', True):
-        log("🔄 Fallback auf Interface-IP...", "INFO", "NETWORK")
+        log("Fallback auf Interface-IP...", "INFO", "NETWORK")
         ip = get_interface_ip_fallback(config)
         if ip:
             return ip
@@ -1197,7 +1199,7 @@ def get_current_ipv6_resilient(config):
     Returns:
         Aktuelle IPv6-Adresse oder None
     """
-    log("🔍 Starte resiliente IPv6-Ermittlung...", "TRACE", "NETWORK")
+    log("Starte resiliente IPv6-Ermittlung...", "TRACE", "NETWORK")
     
     # 1. Versuche externe IPv6-Services
     ip6 = get_public_ipv6_with_fallback(config)
@@ -1206,7 +1208,7 @@ def get_current_ipv6_resilient(config):
     
     # 2. Fallback auf Interface-IPv6 (nur wenn aktiviert)
     if config.get('enable_interface_fallback', True):
-        log("🔄 Fallback auf Interface-IPv6...", "INFO", "NETWORK")
+        log("Fallback auf Interface-IPv6...", "INFO", "NETWORK")
         ip6 = get_interface_ipv6_fallback(config)
         if ip6:
             return ip6
@@ -1280,13 +1282,18 @@ def main():
     loglevel = config.get("loglevel", "INFO")
     consolelevel = config.get("consolelevel", loglevel)
     
-    # Update both state and global variables for backward compatibility
+    # Initialize logging FIRST before setting state variables
+    setup_logging(loglevel, config)
+    
+    # Then update both state and global variables for backward compatibility
     log_level = loglevel
     console_level = consolelevel
     state.log_level = loglevel
     state.console_level = consolelevel
     
-    setup_logging(loglevel, config)
+    # Test debug logging immediately after setup
+    log(f"Logging system initialized: file_level='{loglevel}', console_level='{consolelevel}'", "DEBUG", "LOGGING")
+    log("Testing DEBUG level logging - this message should appear if consolelevel is DEBUG", "DEBUG", "LOGGING")
     
     last_config_mtime = os.path.getmtime(config_path)
     if not config or not isinstance(config, dict):
