@@ -290,12 +290,14 @@ class BaseProvider(ABC):
     
     def update_unified(self, current_ip, current_ip6):
         """Hauptupdate-Methode mit einheitlicher Logik."""
+        log(f"BaseProvider: Starting unified update for {self.name}", "DEBUG", "PROVIDER")
         try:
             # Validierung
             self.validate_config()
             
             # Provider-spezifisches Update
             result = self.perform_update(current_ip, current_ip6)
+            log(f"BaseProvider: Update result for {self.name}: {result}", "DEBUG", "PROVIDER")
             
             # Benachrichtigungen senden
             if result and result != "nochg":
@@ -307,6 +309,7 @@ class BaseProvider(ABC):
             return result
             
         except Exception as e:
+            log(f"BaseProvider: Exception in unified update for {self.name}: {str(e)}", "DEBUG", "PROVIDER")
             self.send_error_notification(str(e))
             log(f"Provider '{self.name}' update failed: {str(e)}", "ERROR", self.provider_type.upper())
             return False
@@ -323,6 +326,7 @@ class BaseProvider(ABC):
     
     def send_success_notification(self, ip):
         """Sendet Erfolgs-Benachrichtigung mit Fallback auf globale Konfiguration."""
+        log(f"BaseProvider: Sending success notification for {self.name}", "DEBUG", "PROVIDER")
         msg = f"Provider '{self.name}' updated successfully. New IP: {ip}"
         
         # Provider-spezifische notify-Konfiguration verwenden, falls vorhanden
@@ -331,12 +335,17 @@ class BaseProvider(ABC):
         # Fallback auf globale notify-Konfiguration wenn keine provider-spezifische vorhanden
         if not notify_config and state.config:
             notify_config = state.config.get("notify")
+            log(f"BaseProvider: Using global notify config for {self.name}", "DEBUG", "PROVIDER")
+        else:
+            log(f"BaseProvider: Using provider-specific notify config for {self.name}", "DEBUG", "PROVIDER")
         
         send_notifications(notify_config, "UPDATE", msg, 
-                         f"🟢 **{self.name}** wurde erfolgreich aktualisiert!")
+                         subject=f"🟢 **{self.name}** wurde erfolgreich aktualisiert!",
+                         service_name=self.name)
     
     def send_error_notification(self, error):
         """Sendet Fehler-Benachrichtigung mit Fallback auf globale Konfiguration."""
+        log(f"BaseProvider: Sending error notification for {self.name}", "DEBUG", "PROVIDER")
         msg = f"Provider '{self.name}' update failed: {error}"
         
         # Provider-spezifische notify-Konfiguration verwenden, falls vorhanden
@@ -345,9 +354,13 @@ class BaseProvider(ABC):
         # Fallback auf globale notify-Konfiguration wenn keine provider-spezifische vorhanden
         if not notify_config and state.config:
             notify_config = state.config.get("notify")
+            log(f"BaseProvider: Using global notify config for {self.name}", "DEBUG", "PROVIDER")
+        else:
+            log(f"BaseProvider: Using provider-specific notify config for {self.name}", "DEBUG", "PROVIDER")
         
         send_notifications(notify_config, "ERROR", msg,
-                         f"🔴 **{self.name}** Update fehlgeschlagen!")
+                         subject=f"🔴 **{self.name}** Update fehlgeschlagen!",
+                         service_name=self.name)
 
 class CloudflareProvider(BaseProvider):
     """Cloudflare-spezifische Implementierung."""
