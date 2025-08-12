@@ -6,18 +6,20 @@ import yaml
 import logging
 import struct
 import datetime
-from notify import send_notifications
 import socket
 import subprocess
 import re
+import array
+import tempfile
+import ipaddress
+from notify import send_notifications
+from logging.handlers import RotatingFileHandler
+from abc import ABC, abstractmethod
+
 try:
     import fcntl
 except ImportError:
     fcntl = None  # Windows doesn't have fcntl
-import struct
-import array
-from logging.handlers import RotatingFileHandler
-import datetime
 
 print("DYNDNS CLIENT STARTUP")
 
