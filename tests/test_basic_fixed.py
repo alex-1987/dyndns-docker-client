@@ -164,6 +164,98 @@ class TestConfigValidation(unittest.TestCase):
 class TestProviderUpdates(unittest.TestCase):
     """Tests for provider update functions."""
     
+    def test_create_provider_with_protocol_field(self):
+        """Test provider creation using 'protocol' field (real config format)."""
+        # Test Cloudflare with protocol field
+        cloudflare_config = {
+            'protocol': 'cloudflare',
+            'name': 'test-cloudflare',
+            'zone': 'example.com',
+            'api_token': 'test_token',
+            'record_name': 'sub.example.com'
+        }
+        
+        provider = update_dyndns.create_provider(cloudflare_config)
+        self.assertIsInstance(provider, update_dyndns.CloudflareProvider)
+        self.assertEqual(provider.name, 'test-cloudflare')
+        
+        # Test IPV64 with protocol field
+        ipv64_config = {
+            'protocol': 'ipv64',
+            'name': 'test-ipv64',
+            'token': 'test_token',
+            'domain': 'example.com'
+        }
+        
+        provider = update_dyndns.create_provider(ipv64_config)
+        self.assertIsInstance(provider, update_dyndns.IPV64Provider)
+        self.assertEqual(provider.name, 'test-ipv64')
+        
+        # Test DynDNS2 with protocol field
+        dyndns2_config = {
+            'protocol': 'dyndns2',
+            'name': 'test-dyndns2',
+            'url': 'https://updates.dnsdynamic.org/api/',
+            'hostname': 'example.com',
+            'auth_method': 'token',
+            'token': 'test_token'
+        }
+        
+        provider = update_dyndns.create_provider(dyndns2_config)
+        self.assertIsInstance(provider, update_dyndns.DynDNS2Provider)
+        self.assertEqual(provider.name, 'test-dyndns2')
+    
+    def test_create_provider_unknown_protocol(self):
+        """Test provider creation fails with unknown protocol."""
+        config = {
+            'protocol': 'unknown_provider',
+            'name': 'test-provider'
+        }
+        
+        with self.assertRaises(ValueError) as context:
+            update_dyndns.create_provider(config)
+        
+        self.assertIn("Unknown provider type: 'unknown_provider'", str(context.exception))
+        self.assertIn("Available types:", str(context.exception))
+    
+    def test_create_provider_missing_protocol(self):
+        """Test provider creation fails when protocol is missing."""
+        config = {
+            'name': 'test-provider',
+            'api_token': 'test_token'
+        }
+        
+        with self.assertRaises(ValueError) as context:
+            update_dyndns.create_provider(config)
+        
+        self.assertIn("No provider type specified", str(context.exception))
+    
+    def test_cloudflare_token_field_compatibility(self):
+        """Test Cloudflare provider supports both 'api_token' and 'token' field names."""
+        # Test with api_token (actual config format)
+        config_api_token = {
+            'protocol': 'cloudflare',
+            'name': 'test-cf1',
+            'zone': 'example.com',
+            'api_token': 'test_token_1',
+            'record_name': 'sub.example.com'
+        }
+        
+        provider1 = update_dyndns.create_provider(config_api_token)
+        self.assertIsInstance(provider1, update_dyndns.CloudflareProvider)
+        
+        # Test with token (backward compatibility)
+        config_token = {
+            'protocol': 'cloudflare',
+            'name': 'test-cf2',
+            'zone': 'example.com',
+            'token': 'test_token_2',  # Alternative field name
+            'record_name': 'sub.example.com'
+        }
+        
+        provider2 = update_dyndns.create_provider(config_token)
+        self.assertIsInstance(provider2, update_dyndns.CloudflareProvider)
+    
     @patch('requests.get')
     @patch('update_dyndns.log')
     def test_update_dyndns2_success(self, mock_log, mock_get):

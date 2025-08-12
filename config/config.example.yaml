@@ -1,0 +1,300 @@
+# Example configuration for DynDNS Docker Client with Network Resilience
+# Copy this file to config/config.yaml and adjust it to your needs!
+
+# =============================================================================
+# NETWORK RESILIENCE CONFIGURATION (NEW!)
+# =============================================================================
+# These settings ensure that the program continues running even during network problems
+# and does not exit
+
+# Multiple IP detection services (tried in sequence)
+ip_services:
+  - "https://api.ipify.org"           # Standard service (previous default)
+  - "https://ifconfig.me/ip"          # Backup 1
+  - "https://icanhazip.com"           # Backup 2  
+  - "https://checkip.amazonaws.com"   # Backup 3
+  - "https://ipecho.net/plain"        # Backup 4
+  - "https://myexternalip.com/raw"    # Backup 5
+
+# Multiple IPv6 detection services (tried in sequence)
+ip6_services:
+  - "https://api64.ipify.org"         # Standard IPv6 service
+  - "https://ifconfig.me/ip"          # Backup 1 (also supports IPv6)
+  - "https://icanhazip.com"           # Backup 2 (automatic IPv6 detection)
+  - "https://v6.ident.me"            # Backup 3 (IPv6-specific)
+  - "https://ipv6.icanhazip.com"     # Backup 4 (IPv6-specific)
+
+# Network error handling (applies to IPv4 and IPv6)
+network_retry_interval: 60        # Wait time after failure (seconds) - Default: 1 minute
+max_failures_before_backoff: 5    # Number of failures before exponential backoff
+backoff_multiplier: 2.0           # Backoff multiplier (2.0 = doubling of wait time)
+max_wait_time: 600                # Maximum wait time (10 minutes)
+error_wait_time: 30               # Wait time after unexpected errors
+
+# Interface fallback (if all external services fail)
+enable_interface_fallback: true   # Use interface IP as fallback
+
+# =============================================================================
+# BASIC CONFIGURATION
+# =============================================================================
+
+# Interval in seconds for IP checks (e.g. every 5 minutes)
+timer: 300
+
+# =============================================================================
+# LOGGING CONFIGURATION
+# =============================================================================
+
+# Logging levels
+loglevel: INFO         # File logging level: INFO, WARNING, ERROR, CRITICAL will be written to log file
+consolelevel: INFO     # Console logging level: INFO, WARNING, ERROR, CRITICAL will be shown on console
+
+# Logging configuration (optional file logging)
+logging:
+  enabled: true                 # Set to true to enable file logging
+  file: "/var/log/dyndns/dyndns.log"  # Log file path (directory will be created if needed)
+  max_size_mb: 10                # Maximum size in MB before rotation
+  backup_count: 3                # Number of backup files to keep
+
+# Log Level Explanation:
+# - TRACE: Routine messages (e.g., "Next run in 60 seconds...")
+# - DEBUG: Debug information (e.g., API responses)  
+# - INFO: Important events (e.g., IP updates, successful updates)
+# - WARNING: Warnings (e.g., network issues)
+# - ERROR: Errors (e.g., failed API calls)
+# - CRITICAL: Critical errors (e.g., configuration errors)
+#
+# Examples:
+#   loglevel: INFO, consolelevel: INFO     -> Both show INFO and above
+#   loglevel: WARNING, consolelevel: TRACE -> File shows only warnings/errors, console shows everything
+#   loglevel: INFO, consolelevel: WARNING  -> File shows info/warnings/errors, console shows only warnings/errors
+
+# Service to fetch the public IPv4 address
+ip_service: "https://api.ipify.org"
+# Or use a local network interface instead 
+# (requires Docker to run with --network host or network_mode: host):
+# interface: "eth0"  # Replace with your actual interface name
+
+# Service to fetch the public IPv6 address (optional)
+# ip6_service: "https://api64.ipify.org"
+# Or use a local network interface instead
+# (requires Docker to run with --network host or network_mode: host):
+# interface6: "eth0"  # Replace with your actual interface name
+
+skip_update_on_startup: true  # If true, no provider updates will be performed on container start if the IP has not changed.
+# If false or not set, an update will always be performed on startup, even if the IP is the same.
+
+# Notifications (all options optional)
+# You can configure notifications either globally (for all providers) or per provider.
+# Provider-specific configuration overrides global configuration.
+notify:
+  reset_cooldown_on_start: true  # Cooldown timers are reset on container start
+#  reset_cooldown_on_start: false  # Cooldown timers are not reset on container start
+
+  # E-Mail
+  email:
+    enabled: true
+    to: "your@email.tld"
+    from: "dyndns-bot@email.tld"
+    smtp_server: "smtp.example.com"
+    smtp_port: 587           # Default: 587 (STARTTLS), 465 (SSL), 25 (no SSL)
+#    smtp_ssl: false          # Not required: true = SSL (port 465), false = no SSL/STARTTLS
+#    smtp_starttls: true      # Not required: true = STARTTLS (port 587), false = no STARTTLS
+    smtp_user: "smtp-user"
+    smtp_pass: "smtp-pass"
+    notify_on: ["ERROR", "CRITICAL", "UPDATE"]
+    cooldown: 30  # Cooldown in minutes for email
+
+  # ntfy Push
+  ntfy:
+    enabled: true
+    url: "https://ntfy.sh/your-topic"
+    notify_on: ["ERROR", "CRITICAL"]
+    cooldown: 10  # Cooldown in minutes for ntfy
+
+  # Webhook (e.g. for custom HTTP services)
+  webhook:
+    enabled: true
+    url: "https://your-webhook-service"
+    notify_on: ["ERROR", "CRITICAL", "UPDATE"]
+    cooldown: 5
+
+  # Telegram
+  telegram:
+    enabled: true
+    bot_token: "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+    chat_id: "123456789"
+    notify_on: ["ERROR", "CRITICAL"]
+    cooldown: 20
+
+  # Discord
+  discord:
+    enabled: true
+    webhook_url: "https://discord.com/api/webhooks/..."
+    notify_on: ["ERROR", "CRITICAL", "UPDATE"]
+    cooldown: 0  # No cooldown for Discord
+
+  # Slack
+  slack:
+    enabled: true
+    webhook_url: "https://hooks.slack.com/services/..."
+    notify_on: ["ERROR", "CRITICAL"]
+    cooldown: 15
+
+# List of providers to update
+providers:
+  # DuckDNS example
+  - name: duckdns
+    protocol: dyndns2
+    url: "https://www.duckdns.org/update"
+    token: "your-duckdns-token"
+    domain: "example"  # DuckDNS expects 'domain'
+
+  # NoIP example
+  - name: noip-home
+    protocol: dyndns2
+    url: "https://dynupdate.no-ip.com/nic/update"
+    username: "your-noip-username"
+    password: "your-noip-password"
+    hostname: "example.ddns.net"  # NoIP expects 'hostname'
+
+  # Dynu example
+  - name: dynu
+    protocol: dyndns2
+    url: "https://api.dynu.com/nic/update"
+    auth_method: "basic"
+    username: "youruser"
+    password: "yourpass"
+    hostname: "yourdomain.dynu.net"  # Dynu expects 'hostname'
+
+  # Cloudflare example (IPv4 and IPv6)
+  - name: my-cloudflare
+    protocol: cloudflare
+    zone: "yourdomain.tld"
+    api_token: "your_cloudflare_api_token"
+    record_name: "sub.domain.tld"
+
+  # ipv64.net example (Token)
+  - name: my-ipv64
+    protocol: ipv64
+    # url is NOT needed for ipv64, it is hardcoded in the code!
+    auth_method: "token"  # or "basic" or "bearer"
+    token: "your_update_token"
+    domain: "yourdomain.ipv64.net"
+
+  # ipv64.net example (Basic Auth)
+  - name: my-ipv64-basic
+    protocol: ipv64
+    auth_method: "basic"
+    token: "your_update_token"
+    domain: "yourdomain.ipv64.net"
+
+  # ipv64.net example (Bearer Auth)
+  - name: my-ipv64-bearer
+    protocol: ipv64
+    auth_method: "bearer"
+    token: "your_update_token"
+    domain: "yourdomain.ipv64.net"
+
+  # dyndns2 example with Bearer Auth
+  - name: example-bearer
+    protocol: dyndns2
+    url: "https://example.com/nic/update"
+    auth_method: "bearer"
+    token: "your_bearer_token"
+    hostname: "yourhost.example.com"
+
+  # dyndns2 example with host instead of hostname/domain
+  - name: example-with-host
+    protocol: dyndns2
+    url: "https://example.com/nic/update"
+    token: "your_token"
+    host: "yourhost.example.com"
+
+  # OVH DynHost example
+  - name: my-ovh-domain
+    protocol: dyndns2
+    url: "https://www.ovh.com/nic/update"
+    auth_method: "basic"
+    username: "your-dynhost-username"
+    password: "your-dynhost-password"
+    hostname: "dynamic.yourdomain.com"
+    extra_params:
+      system: "dyndns"
+
+  # Example with extra parameters for custom providers
+  - name: example-with-extras
+    protocol: dyndns2
+    url: "https://example.com/nic/update"
+    username: "username"
+    password: "password"
+    hostname: "host.example.com"
+    extra_params:
+      param1: "value1"
+      param2: "value2"
+
+  # Example with provider-specific notifications (overrides global config)
+  - name: critical-provider
+    protocol: cloudflare
+    zone: "critical-domain.com"
+    api_token: "your_cloudflare_api_token"
+    record_name: "important.critical-domain.com"
+    # Provider-specific notification configuration
+    notify:
+      discord:
+        enabled: true
+        webhook_url: "https://discord.com/api/webhooks/different-webhook"
+        notify_on: ["ERROR", "CRITICAL", "UPDATE"]  # All events for this critical provider
+        cooldown: 0
+      email:
+        enabled: true
+        to: "admin@critical-domain.com"
+        from: "dyndns-critical@critical-domain.com"
+        smtp_server: "smtp.critical-domain.com"
+        smtp_port: 587
+        smtp_user: "dyndns-user"
+        smtp_pass: "dyndns-password"
+        notify_on: ["ERROR", "CRITICAL"]
+        cooldown: 5
+
+## Network Interface Configuration
+
+This application supports retrieving IP addresses from local network interfaces instead of using external services. This can be useful when:
+
+- You're in a network without internet access
+- You have a dedicated public IPv4/IPv6 address assigned to an interface
+- You want to avoid dependency on external IP services
+
+### Requirements for Interface Mode
+
+To use this feature with Docker, you must run the container with host network mode:
+
+```yaml
+# docker-compose.yml example
+services:
+  dyndns:
+    image: alex-1987/dyndns-docker-client:latest
+    network_mode: host  # This is required to access host interfaces!
+    volumes:
+      - ./config:/app/config
+```
+
+# Notes:
+# - For dyndns2 providers, the 'url' field is required!
+# - For cloudflare and ipv64, the URL is hardcoded in the code.
+# - Depending on the provider, the fields 'domain', 'hostname', or 'host' are required.
+# - auth_method can be "token", "basic", or "bearer" (depending on provider/API).
+#
+# Explanation:
+# - Set loglevel or consolelevel to TRACE to see routine/status messages (e.g. "IP unchanged", "Next run in ...").
+# - Set to INFO or higher to hide routine logs and only see important events.
+# - Both loglevel and consolelevel are independent.
+#
+# Loglevel options: TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL
+#
+# TRACE is for routine/status messages to avoid log bloat. Use only if you want to see every status message.
+#
+# Example:
+#   loglevel: TRACE
+#   consolelevel: INFO
+#   # This will log all messages to file, but only show important info on the console.

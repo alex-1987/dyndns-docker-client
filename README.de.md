@@ -47,28 +47,33 @@ Es unterstützt IPv4 und optional IPv6, prüft regelmäßig die öffentliche IP 
 
 ---
 
-## Loglevel & Consolelevel
+## Log Levels
 
-Der Loglevel steuert die **Ausführlichkeit der Protokollierung** (Datei und/oder Konsole). Es gibt zwei Stufen:
-- `loglevel`: Steuert, was ins Logfile geschrieben wird (wenn Dateilogs aktiviert sind)
-- `consolelevel`: Steuert, was auf der Konsole (stdout) ausgegeben wird
-
-Setze diese Optionen in deiner `config.yaml`:
+Konfiguriere das Logging in deiner `config.yaml`:
 
 ```yaml
-loglevel: "INFO"        # Logfile-Level (bei aktiviertem Dateilog)
-consolelevel: "INFO"    # Konsolen-Level (was im Terminal ausgegeben wird)
+loglevel: "INFO"        # Dateiloglevel  
+consolelevel: "INFO"    # Konsolen-Ausgabelevel
 ```
 
-**Was ist auf welcher Stufe enthalten?**
-| Loglevel | Beschreibung |
-|----------|--------------|
-| TRACE    | Routine-/Statusmeldungen (z.B. "IP unverändert", "Nächster Lauf in ..."). Nur sichtbar, wenn TRACE gesetzt ist. Für regelmäßige Statusmeldungen, um Log-Spam zu vermeiden. |
-| DEBUG    | Detaillierte Debug-Informationen. |
-| INFO     | Normale Betriebsinformationen. |
-| WARNING  | Warnungen, unerwartete, aber nicht fatale Ereignisse. |
-| ERROR    | Fehler, die Aufmerksamkeit erfordern. |
-| CRITICAL | Kritische Fehler, das Programm wird beendet. |
+**Verfügbare Level:**
+- **TRACE** - Sehr detailliert, zeigt jeden IP-Check
+- **DEBUG** - Technische Details, Timer, Fehlersuche
+- **INFO** - Standard für Produktion, wichtige Ereignisse
+- **WARNING** - Probleme und Netzwerkfehler
+- **ERROR** - Schwerwiegende Fehler die Aufmerksamkeit erfordern
+- **CRITICAL** - Fatale Fehler die das Programm stoppen
+
+**Schnelle Konfiguration:**
+```yaml
+# Produktion: ruhige Konsole, detaillierte Logs
+consolelevel: "WARNING"
+loglevel: "INFO"
+
+# Entwicklung: alles anzeigen
+consolelevel: "DEBUG"
+loglevel: "TRACE"
+```
 
 ### Beispiel-Konfiguration für loglevel und consolelevel
 
@@ -79,18 +84,27 @@ consolelevel: INFO      # Konsolenlevel: nur wichtige Infos und höher anzeigen
 
 - `loglevel` steuert, was in die Logdatei geschrieben wird (sofern aktiviert).
 - `consolelevel` steuert, was auf der Konsole ausgegeben wird.
-- Setze einen der Werte auf `TRACE`, um Routine-/Statusmeldungen zu sehen (z.B. "IP unverändert", "Nächster Lauf in ...").
+- Setze einen der Werte auf `TRACE`, um alle Routine-/Statusmeldungen zu sehen.
+- Setze einen der Werte auf `DEBUG`, um technische Details und Timer-Meldungen zu sehen.
 
-**Beispiele für Log-Einträge:**
-- Jeder IP-Check (alle `timer` Sekunden)
-- Jeder Provider-Update-Versuch (Erfolg, keine Änderung, Fehler)
-- Alle Fehler und Warnungen
-- Alle gesendeten Benachrichtigungen (und Fehler)
-- Alle Config-Reloads und Hot-Reload-Events
-- Alle Start- und Stopp-Ereignisse
+### Praktische Empfehlungen
 
-**Hinweis:**
-- Wenn du `consolelevel` nicht setzt, wird für die Konsole das gleiche Level wie für das Logfile verwendet.
+**Kombinationsbeispiele:**
+```yaml
+# Beispiel 1: Detaillierte Konsole, kompakte Datei
+consolelevel: "DEBUG"    # Konsole: Timer + Details sichtbar
+loglevel: "WARNING"      # Datei: nur Probleme dauerhaft speichern
+
+# Beispiel 2: Kompakte Konsole, vollständige Datei  
+consolelevel: "INFO"     # Konsole: nur wichtige Events
+loglevel: "TRACE"        # Datei: alles für spätere Analyse
+
+# Beispiel 3: Vollständige Überwachung
+consolelevel: "TRACE"    # Konsole: alle Details live sehen
+loglevel: "TRACE"        # Datei: vollständige Aufzeichnung
+```
+
+---
 - Dateilogs müssen im Abschnitt `logging` der Config aktiviert werden, damit Logs in eine Datei geschrieben werden.
 
 Beispiel-Konfiguration:
@@ -208,27 +222,53 @@ providers:
 
 ### Benachrichtigungen & Cooldown
 
+Du kannst Benachrichtigungen auf zwei Arten konfigurieren:
+
+#### 1. Globale Benachrichtigungen (für alle Provider)
+Konfiguriere Benachrichtigungen einmal im globalen `notify`-Bereich. Alle Provider verwenden standardmäßig diese Einstellungen.
+
+#### 2. Provider-spezifische Benachrichtigungen  
+Konfiguriere Benachrichtigungen individuell für jeden Provider. Provider-spezifische Einstellungen überschreiben globale Einstellungen.
+
 Du kannst für **jeden Notification-Dienst** einen eigenen Cooldown (in Minuten) setzen, um Benachrichtigungs-Spam zu vermeiden.  
 Nach einer Benachrichtigung wartet der jeweilige Dienst die angegebene Zeit, bevor wieder eine Nachricht gesendet wird.  
 Ist kein Wert gesetzt oder `0`, gibt es **keinen Cooldown** für diesen Dienst.
 
 ```yaml
+# Globale Benachrichtigungskonfiguration (wird von allen Providern verwendet, außer überschrieben)
 notify:
   reset_cooldown_on_start: true  # Cooldown-Zähler wird beim Start zurückgesetzt
-  ntfy:
-    cooldown: 10
-    enabled: true
-    url: "https://ntfy.sh/dein-topic"
-    notify_on: ["ERROR", "CRITICAL"]
   discord:
-    cooldown: 30
     enabled: true
-    webhook_url: "https://discord.com/api/webhooks/..."
+    webhook_url: "https://discord.com/api/webhooks/global-webhook"
     notify_on: ["ERROR", "CRITICAL"]
-  email:
-    cooldown: 0  # Kein Cooldown für E-Mail
-    enabled: true
-    # ...weitere Einstellungen...
+    cooldown: 30
+
+providers:
+  # Dieser Provider verwendet die globalen Benachrichtigungseinstellungen
+  - name: normaler-provider
+    protocol: cloudflare
+    zone: "beispiel.de"
+    api_token: "token123"
+    record_name: "www.beispiel.de"
+  
+  # Dieser Provider hat eigene Benachrichtigungseinstellungen  
+  - name: kritischer-provider
+    protocol: cloudflare
+    zone: "wichtig.de"
+    api_token: "token456"
+    record_name: "api.wichtig.de"
+    # Provider-spezifische Benachrichtigungen überschreiben globale Einstellungen
+    notify:
+      discord:
+        enabled: true
+        webhook_url: "https://discord.com/api/webhooks/critical-webhook"
+        notify_on: ["ERROR", "CRITICAL", "UPDATE"]  # Mehr Events für kritischen Provider
+        cooldown: 0  # Kein Cooldown für kritische Benachrichtigungen
+      email:
+        enabled: true
+        to: "admin@wichtig.de"
+        # ... weitere E-Mail-Einstellungen
 ```
 
 Mit  
@@ -238,10 +278,19 @@ reset_cooldown_on_start: true
 kannst du festlegen, dass beim Start des Containers alle Cooldown-Zähler zurückgesetzt werden.  
 Setze diese Option auf `false`, um den Cooldown auch nach einem Neustart weiterlaufen zu lassen.
 
+**Verfügbare Benachrichtigungsdienste:**
+- **Discord:** Webhook-Benachrichtigungen zu Discord-Kanälen
+- **Slack:** Webhook-Benachrichtigungen zu Slack-Kanälen
+- **E-Mail:** SMTP E-Mail-Benachrichtigungen
+- **Telegram:** Bot-Benachrichtigungen über Telegram API
+- **ntfy:** Push-Benachrichtigungen über ntfy.sh
+- **Webhook:** Benutzerdefinierte HTTP-Webhook-Aufrufe
+
 **Hinweis:**  
 - Die Cooldown-Zeit wird pro Dienst separat gespeichert.
 - Die Option `reset_cooldown_on_start` gilt für alle Dienste gemeinsam.
 - Nach einer Benachrichtigung wird der Cooldown für den jeweiligen Dienst gesetzt.
+- Provider-spezifische Benachrichtigungseinstellungen überschreiben immer globale Einstellungen.
 
 ---
 
@@ -400,6 +449,9 @@ Dies zeigt detaillierte Informationen über:
 - IP-Erkennungsprozess
 - Provider-Authentifizierung
 - Konfigurationsparsing
+- **Benachrichtigungsverarbeitung** (warum Benachrichtigungen gesendet oder unterdrückt werden)
+- **Cooldown-Status** für jeden Benachrichtigungsdienst
+- **Service-Konfigurationsprüfungen** (aktiviert/deaktiviert, Level-Übereinstimmung, etc.)
 
 ---
 

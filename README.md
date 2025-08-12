@@ -59,32 +59,46 @@ It supports IPv4 and optionally IPv6, regularly checks the public IP, and update
 
 ---
 
-### Log Levels Explained
+## Log Levels
 
-- **DEBUG:**  
-  Shows very detailed information for troubleshooting and development.  
-  Examples: Internal variable values, function calls, processing steps.
+Configure logging in your `config.yaml`:
 
-- **INFO:**  
-  Shows general information about normal application operation.  
-  Examples: Successful updates, detected IP addresses, startup messages.
+```yaml
+loglevel: "INFO"        # Log file level
+consolelevel: "INFO"    # Console output level
+```
 
-- **WARNING:**  
-  Indicates something unexpected happened, but the application can continue running.  
-  Examples: Temporary network issues, missing optional configuration, retry attempts.
+**Available Levels:**
+- **TRACE** - Very detailed, shows every IP check
+- **DEBUG** - Technical details, timers, troubleshooting
+- **INFO** - Standard production level, important events
+- **WARNING** - Problems and network issues
+- **ERROR** - Serious errors requiring attention
+- **CRITICAL** - Fatal errors that stop the program
 
-- **ERROR:**  
-  Indicates a serious problem that prevented an operation from completing.  
-  Examples: Failed DNS update, permanent network failure, invalid configuration.
+**Quick Setup:**
+```yaml
+# Production: quiet console, detailed logs
+consolelevel: "WARNING"
+loglevel: "INFO"
 
-- **CRITICAL:**  
-  Indicates a very severe error that may cause the application to stop or lose important functionality.  
-  Examples: Fatal configuration errors, unhandled exceptions, application shutdown.
+# Development: see everything
+consolelevel: "DEBUG"
+loglevel: "TRACE"
+```
 
-**Note:**  
-The lower the log level (e.g. DEBUG), the more details are shown.  
-For normal operation, INFO or WARNING is usually sufficient.  
-Use DEBUG only for troubleshooting.
+**Note:**
+- If you don't set `consolelevel`, the same level as for the log file is used for the console.
+- File logs must be enabled in the `logging` section of the config for logs to be written to a file.
+
+Example configuration:
+```yaml
+loglevel: "INFO"
+consolelevel: "WARNING"
+logging:
+  enabled: true
+  file: "/var/log/dyndns/dyndns.log"
+```
 
 ---
 
@@ -196,27 +210,53 @@ providers:
 
 ### Notifications & Cooldown
 
+You can configure notifications in two ways:
+
+#### 1. Global Notifications (for all providers)
+Configure notifications once in the global `notify` section. All providers will use these settings by default.
+
+#### 2. Provider-Specific Notifications
+Configure notifications individually for each provider. Provider-specific settings override global settings.
+
 You can set an individual cooldown (in minutes) for **each notification service** to avoid notification spam.  
 After a notification, the respective service will wait the specified time before sending another message.  
 If no value or `0` is set, there is **no cooldown** for that service.
 
 ```yaml
+# Global notification configuration (used by all providers unless overridden)
 notify:
   reset_cooldown_on_start: true  # Reset cooldown timers on container start
-  ntfy:
-    cooldown: 10
-    enabled: true
-    url: "https://ntfy.sh/your-topic"
-    notify_on: ["ERROR", "CRITICAL"]
   discord:
-    cooldown: 30
     enabled: true
-    webhook_url: "https://discord.com/api/webhooks/..."
+    webhook_url: "https://discord.com/api/webhooks/global-webhook"
     notify_on: ["ERROR", "CRITICAL"]
-  email:
-    cooldown: 0  # No cooldown for email
-    enabled: true
-    # ...more settings...
+    cooldown: 30
+
+providers:
+  # This provider uses global notification settings
+  - name: regular-provider
+    protocol: cloudflare
+    zone: "example.com"
+    api_token: "token123"
+    record_name: "www.example.com"
+  
+  # This provider has custom notification settings
+  - name: critical-provider
+    protocol: cloudflare
+    zone: "important.com"
+    api_token: "token456"  
+    record_name: "api.important.com"
+    # Provider-specific notifications override global settings
+    notify:
+      discord:
+        enabled: true
+        webhook_url: "https://discord.com/api/webhooks/critical-webhook"
+        notify_on: ["ERROR", "CRITICAL", "UPDATE"]  # More events for critical provider
+        cooldown: 0  # No cooldown for critical notifications
+      email:
+        enabled: true
+        to: "admin@important.com"
+        # ... more email settings
 ```
 
 With  
@@ -226,10 +266,19 @@ reset_cooldown_on_start: true
 you can specify that all cooldown timers are reset when the container starts.  
 Set this option to `false` to let the cooldown continue after a restart.
 
+**Available Notification Services:**
+- **Discord:** Webhook notifications to Discord channels
+- **Slack:** Webhook notifications to Slack channels  
+- **Email:** SMTP email notifications
+- **Telegram:** Bot notifications via Telegram API
+- **ntfy:** Push notifications via ntfy.sh
+- **Webhook:** Custom HTTP webhook calls
+
 **Note:**  
 - The cooldown time is stored separately for each service.
 - The `reset_cooldown_on_start` option applies to all services.
 - After a notification, the cooldown for the respective service is set.
+- Provider-specific notification settings always override global settings.
 
 ---
 
@@ -474,6 +523,9 @@ This will show detailed information about:
 - IP detection process
 - Provider authentication
 - Configuration parsing
+- **Notification processing** (why notifications are sent or suppressed)
+- **Cooldown status** for each notification service
+- **Service configuration checks** (enabled/disabled, level matching, etc.)
 
 ---
 

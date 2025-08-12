@@ -4,6 +4,8 @@ import time
 import requests
 import yaml
 import logging
+import struct
+import datetime
 from notify import send_notifications
 import socket
 import subprocess
@@ -19,9 +21,42 @@ import datetime
 
 print("DYNDNS CLIENT STARTUP")
 
-config = None  # global, so update_provider can access it
+class DynDNSState:
+    """Zentrale Zustandsverwaltung für DynDNS Client."""
+    
+    def __init__(self):
+        self.config = None
+        self.log_level = "INFO"
+        self.console_level = "INFO"
+        self.file_logger = None
+        
+        # IP-Tracking
+        self.last_ipv4 = None
+        self.last_ipv6 = None
+        
+        # Netzwerk-Zustand
+        self.resilient_mode = False
+        self.failed_providers = []
+        self.error_count = 0
+        self.last_error_time = 0
+        self.backoff_delay = 60
+    
+    def reset_network_state(self):
+        """Setzt Netzwerk-Fehler-Zustand zurück."""
+        self.resilient_mode = False
+        self.failed_providers = []
+        self.error_count = 0
+    
+    def add_failed_provider(self, provider_name):
+        """Fügt einen fehlgeschlagenen Provider hinzu."""
+        if provider_name not in self.failed_providers:
+            self.failed_providers.append(provider_name)
 
-# Global variables
+# Globale Instanz
+state = DynDNSState()
+
+# Backward compatibility: Keep global references for existing code
+config = None  # global, so update_provider can access it
 log_level = "INFO"         # For file logging
 console_level = "INFO"     # For console output
 file_logger_instance = None
@@ -48,6 +83,7 @@ def setup_logging(loglevel, config=None):
         config: Optional configuration dictionary for file logging
     """
     global log_level, file_logger_instance
+    state.log_level = loglevel
     log_level = loglevel
     
     # Only setup file logging if explicitly enabled
@@ -79,6 +115,9 @@ def setup_logging(loglevel, config=None):
             file_logger_instance.addHandler(file_handler)
             file_logger_instance.propagate = False
             
+            # Update state
+            state.file_logger = file_logger_instance
+            
             # Log initial message to file
             start_msg = f"Log file enabled: {log_file} (max size: {max_size/1024/1024:.1f}MB, backups: {backup_count})"
             file_logger_instance.info(start_msg)
@@ -87,6 +126,10 @@ def setup_logging(loglevel, config=None):
         except Exception as e:
             print(f"{datetime.datetime.now(datetime.timezone.utc).isoformat()} [ERROR] LOGGING --> Failed to setup file logging: {e}")
             file_logger_instance = None
+            state.file_logger = None
+    else:
+        file_logger_instance = None
+        state.file_logger = None
     
     return loglevel
 
@@ -103,9 +146,9 @@ def log(message, level="INFO", section="MAIN", file_only_on_change=False):
     """
     global console_level, log_level, file_logger_instance
     
-    # Get log levels with defaults
-    current_console_level = globals().get('console_level', 'INFO')
-    current_file_level = globals().get('log_level', 'INFO')  # Use log_level for file logging
+    # Get log levels with defaults - use state if available, otherwise globals
+    current_console_level = state.console_level if hasattr(state, 'console_level') else globals().get('console_level', 'INFO')
+    current_file_level = state.log_level if hasattr(state, 'log_level') else globals().get('log_level', 'INFO')
     
     # Log levels for filtering
     levels = ["TRACE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
@@ -122,7 +165,8 @@ def log(message, level="INFO", section="MAIN", file_only_on_change=False):
         print(f"{timestamp} [{level}] {section} --> {message}")
     
     # Additionally log to file if configured
-    if file_logger_instance is not None:
+    current_file_logger = state.file_logger if hasattr(state, 'file_logger') and state.file_logger else file_logger_instance
+    if current_file_logger is not None:
         # Check if we should log to file
         should_log_file = True
         if file_only_on_change and level not in ("ERROR", "CRITICAL"):
@@ -138,7 +182,7 @@ def log(message, level="INFO", section="MAIN", file_only_on_change=False):
         
         if should_log_file:
             file_message = f"{section} --> {message}"
-            log_method = getattr(file_logger_instance, level.lower(), file_logger_instance.info)
+            log_method = getattr(current_file_logger, level.lower(), current_file_logger.info)
             log_method(file_message)
 
 def should_log(level, configured_level):
@@ -228,6 +272,198 @@ def get_cloudflare_record_id(api_token, zone_id, record_name):
     if data.get("success") and data["result"]:
         return data["result"][0]["id"]
     raise Exception(f"DNS record ID for {record_name} not found: {data}")
+
+# =============================================================================
+# UNIFIED PROVIDER ARCHITECTURE
+# =============================================================================
+
+from abc import ABC, abstractmethod
+
+class BaseProvider(ABC):
+    """Basis-Klasse für alle DynDNS-Provider."""
+    
+    def __init__(self, config):
+        self.config = config
+        self.name = config.get('name', 'unknown')
+        # Support both 'type' and 'protocol' for backward compatibility
+        self.provider_type = config.get('type', config.get('protocol', 'unknown'))
+    
+    def update_unified(self, current_ip, current_ip6):
+        """Hauptupdate-Methode mit einheitlicher Logik."""
+        log(f"BaseProvider: Starting unified update for {self.name}", "DEBUG", "PROVIDER")
+        try:
+            # Validierung
+            self.validate_config()
+            
+            # Provider-spezifisches Update
+            result = self.perform_update(current_ip, current_ip6)
+            log(f"BaseProvider: Update result for {self.name}: {result}", "DEBUG", "PROVIDER")
+            
+            # Benachrichtigungen senden
+            if result and result != "nochg":
+                self.send_success_notification(current_ip or current_ip6)
+                log(f"Provider '{self.name}' updated successfully.", "INFO", self.provider_type.upper())
+            elif result == "nochg":
+                log(f"Provider '{self.name}' - no change needed.", "TRACE", self.provider_type.upper())
+            
+            return result
+            
+        except Exception as e:
+            log(f"BaseProvider: Exception in unified update for {self.name}: {str(e)}", "DEBUG", "PROVIDER")
+            self.send_error_notification(str(e))
+            log(f"Provider '{self.name}' update failed: {str(e)}", "ERROR", self.provider_type.upper())
+            return False
+    
+    @abstractmethod
+    def perform_update(self, current_ip, current_ip6):
+        """Provider-spezifische Update-Logik."""
+        pass
+    
+    @abstractmethod
+    def validate_config(self):
+        """Provider-spezifische Konfigurationsvalidierung."""
+        pass
+    
+    def send_success_notification(self, ip):
+        """Sendet Erfolgs-Benachrichtigung mit Fallback auf globale Konfiguration."""
+        log(f"BaseProvider: Sending success notification for {self.name}", "DEBUG", "PROVIDER")
+        msg = f"Provider '{self.name}' updated successfully. New IP: {ip}"
+        
+        # Provider-spezifische notify-Konfiguration verwenden, falls vorhanden
+        notify_config = self.config.get("notify")
+        
+        # Fallback auf globale notify-Konfiguration wenn keine provider-spezifische vorhanden
+        if not notify_config and state.config:
+            notify_config = state.config.get("notify")
+            log(f"BaseProvider: Using global notify config for {self.name}", "DEBUG", "PROVIDER")
+        else:
+            log(f"BaseProvider: Using provider-specific notify config for {self.name}", "DEBUG", "PROVIDER")
+        
+        send_notifications(notify_config, "UPDATE", msg, 
+                         subject=f"🟢 **{self.name}** wurde erfolgreich aktualisiert!",
+                         service_name=self.name)
+    
+    def send_error_notification(self, error):
+        """Sendet Fehler-Benachrichtigung mit Fallback auf globale Konfiguration."""
+        log(f"BaseProvider: Sending error notification for {self.name}", "DEBUG", "PROVIDER")
+        msg = f"Provider '{self.name}' update failed: {error}"
+        
+        # Provider-spezifische notify-Konfiguration verwenden, falls vorhanden
+        notify_config = self.config.get("notify")
+        
+        # Fallback auf globale notify-Konfiguration wenn keine provider-spezifische vorhanden
+        if not notify_config and state.config:
+            notify_config = state.config.get("notify")
+            log(f"BaseProvider: Using global notify config for {self.name}", "DEBUG", "PROVIDER")
+        else:
+            log(f"BaseProvider: Using provider-specific notify config for {self.name}", "DEBUG", "PROVIDER")
+        
+        send_notifications(notify_config, "ERROR", msg,
+                         subject=f"🔴 **{self.name}** Update fehlgeschlagen!",
+                         service_name=self.name)
+
+class CloudflareProvider(BaseProvider):
+    """Cloudflare-spezifische Implementierung."""
+    
+    def __init__(self, config):
+        super().__init__(config)
+        # Validate configuration during initialization
+        self.validate_config()
+    
+    def validate_config(self):
+        # Support both 'api_token' and 'token' field names
+        has_token = self.config.get('api_token') or self.config.get('token')
+        if not has_token:
+            raise ValueError("Missing Cloudflare config: need 'api_token' or 'token' field")
+        
+        required = ['zone', 'record_name']
+        missing = [f for f in required if not self.config.get(f)]
+        if missing:
+            raise ValueError(f"Missing Cloudflare config: {missing}")
+    
+    def perform_update(self, current_ip, current_ip6):
+        """Führt Cloudflare-Update durch."""
+        # Delegiere an bestehende Funktion für Kompatibilität
+        return update_cloudflare(self.config, current_ip, current_ip6)
+
+class IPV64Provider(BaseProvider):
+    """IPV64-spezifische Implementierung."""
+    
+    def __init__(self, config):
+        super().__init__(config)
+        # Validate configuration during initialization
+        self.validate_config()
+    
+    def validate_config(self):
+        required = ['token']
+        missing = [f for f in required if not self.config.get(f)]
+        if missing:
+            raise ValueError(f"Missing IPV64 config: {missing}")
+        
+        # Domain/host/hostname validation
+        if not any(k in self.config for k in ['domain', 'host', 'hostname']):
+            raise ValueError("Missing IPV64 domain config: need 'domain', 'host', or 'hostname'")
+    
+    def perform_update(self, current_ip, current_ip6):
+        """Führt IPV64-Update durch."""
+        # Delegiere an bestehende Funktion für Kompatibilität
+        return update_ipv64(self.config, current_ip, current_ip6)
+
+class DynDNS2Provider(BaseProvider):
+    """DynDNS2-spezifische Implementierung."""
+    
+    def __init__(self, config):
+        super().__init__(config)
+        # Validate configuration during initialization
+        self.validate_config()
+    
+    def validate_config(self):
+        required = ['url']
+        missing = [f for f in required if not self.config.get(f)]
+        if missing:
+            raise ValueError(f"Missing DynDNS2 config: {missing}")
+        
+        # Hostname validation
+        if not any(k in self.config for k in ['hostname', 'domain', 'host']):
+            raise ValueError("Missing DynDNS2 hostname config: need 'hostname', 'domain', or 'host'")
+        
+        # Auth validation
+        auth_method = self.config.get('auth_method', 'token')
+        if auth_method in ['token', 'basic', 'bearer']:
+            if not self.config.get('token') and not (self.config.get('username') and self.config.get('password')):
+                raise ValueError("Missing DynDNS2 authentication: need 'token' or 'username'+'password'")
+    
+    def perform_update(self, current_ip, current_ip6):
+        """Führt DynDNS2-Update durch."""
+        # Delegiere an bestehende Funktion für Kompatibilität
+        return update_dyndns2(self.config, current_ip, current_ip6)
+
+# Provider-Factory
+def create_provider(provider_config):
+    """Erstellt Provider-Instanz basierend auf Typ."""
+    # Support both 'type' and 'protocol' for backward compatibility
+    provider_type = provider_config.get('type', provider_config.get('protocol', '')).lower()
+    
+    if not provider_type:
+        available_types = 'cloudflare, ipv64, dyndns2'
+        raise ValueError(f"No provider type specified. Available types: {available_types}")
+    
+    providers = {
+        'cloudflare': CloudflareProvider,
+        'ipv64': IPV64Provider,
+        'dyndns2': DynDNS2Provider
+    }
+    
+    provider_class = providers.get(provider_type)
+    if not provider_class:
+        available_types = ', '.join(providers.keys())
+        raise ValueError(f"Unknown provider type: '{provider_type}'. Available types: {available_types}")
+    
+    return provider_class(provider_config)
+
+# =============================================================================
+# LEGACY PROVIDER FUNCTIONS (maintained for compatibility)
+# =============================================================================
 
 def update_cloudflare(provider, ip, ip6=None):
     """
@@ -505,12 +741,33 @@ def save_last_ip(ip_version, ip):
 
 def update_provider(provider, ip, ip6=None, log_success_if_nochg=True, old_ip=None, old_ip6=None):
     """
-    Selects the appropriate update function for the provider based on the protocol.
+    Selects the appropriate update function for the provider based on the protocol/type.
+    Now supports both unified provider architecture and legacy protocol-based approach.
     Logs the result and returns True (update/nochg) or False (error).
     """
     try:
         provider_name = provider.get("name", "PROVIDER")
-        protocol = provider.get("protocol", "unknown")
+        protocol = provider.get("protocol", provider.get("type", "unknown"))
+        
+        # Try unified provider architecture first
+        if protocol in ['cloudflare', 'ipv64', 'dyndns2']:
+            try:
+                unified_provider = create_provider(provider)
+                result = unified_provider.update_unified(ip, ip6)
+                
+                # Return boolean for compatibility
+                if result == "updated":
+                    return True
+                elif result == "nochg":
+                    return log_success_if_nochg
+                else:
+                    return False
+                    
+            except Exception as e:
+                log(f"Unified provider failed, falling back to legacy: {str(e)}", "DEBUG", "PROVIDER")
+                # Continue to legacy implementation below
+        
+        # Legacy implementation (kept for backward compatibility)
         # Cloudflare
         if protocol == "cloudflare":
             result = update_cloudflare(provider, ip, ip6)
@@ -772,7 +1029,7 @@ def get_public_ip_with_fallback(config):
             ip = get_public_ip(service)
             
             if ip and validate_ipv4(ip):
-                log(f"✅ IP erfolgreich ermittelt von {service}: {ip}", "INFO", "NETWORK")
+                log(f"IP erfolgreich ermittelt von {service}: {ip}", "INFO", "NETWORK")
                 return ip
             else:
                 log(f"⚠️ Ungültige IP von {service}: {ip}", "WARNING", "NETWORK")
@@ -829,7 +1086,7 @@ def get_public_ipv6_with_fallback(config):
             ip6 = get_public_ipv6(service)
             
             if ip6 and validate_ipv6(ip6):
-                log(f"✅ IPv6 erfolgreich ermittelt von {service}: {ip6}", "INFO", "NETWORK")
+                log(f"IPv6 erfolgreich ermittelt von {service}: {ip6}", "INFO", "NETWORK")
                 return ip6
             else:
                 log(f"⚠️ Ungültige IPv6 von {service}: {ip6}", "WARNING", "NETWORK")
@@ -864,7 +1121,7 @@ def get_interface_ip_fallback(config):
         # Verwende bestehende get_interface_ipv4 Funktion
         ip = get_interface_ipv4(interface)
         if ip and validate_ipv4(ip):
-            log(f"✅ Interface-IP ermittelt: {ip}", "INFO", "NETWORK")
+            log(f"Interface-IP ermittelt: {ip}", "INFO", "NETWORK")
             return ip
             
     except Exception as e:
@@ -879,7 +1136,7 @@ def get_interface_ip_fallback(config):
         s.close()
         
         if ip and validate_ipv4(ip) and not ip.startswith('127.'):
-            log(f"✅ Socket-Fallback IP: {ip}", "INFO", "NETWORK")
+            log(f"Socket-Fallback IP: {ip}", "INFO", "NETWORK")
             return ip
             
     except Exception as e:
@@ -909,7 +1166,7 @@ def get_interface_ipv6_fallback(config):
         # Verwende bestehende get_interface_ipv6 Funktion
         ip6 = get_interface_ipv6(interface6)
         if ip6 and validate_ipv6(ip6):
-            log(f"✅ Interface-IPv6 ermittelt: {ip6}", "INFO", "NETWORK")
+            log(f"Interface-IPv6 ermittelt: {ip6}", "INFO", "NETWORK")
             return ip6
             
     except Exception as e:
@@ -927,7 +1184,7 @@ def get_current_ip_resilient(config):
     Returns:
         Aktuelle IP-Adresse oder None
     """
-    log("🔍 Starte resiliente IP-Ermittlung...", "TRACE", "NETWORK")
+    log("Starte resiliente IP-Ermittlung...", "TRACE", "NETWORK")
     
     # 1. Versuche externe IP-Services
     ip = get_public_ip_with_fallback(config)
@@ -936,7 +1193,7 @@ def get_current_ip_resilient(config):
     
     # 2. Fallback auf Interface-IP (nur wenn aktiviert)
     if config.get('enable_interface_fallback', True):
-        log("🔄 Fallback auf Interface-IP...", "INFO", "NETWORK")
+        log("Fallback auf Interface-IP...", "INFO", "NETWORK")
         ip = get_interface_ip_fallback(config)
         if ip:
             return ip
@@ -955,7 +1212,7 @@ def get_current_ipv6_resilient(config):
     Returns:
         Aktuelle IPv6-Adresse oder None
     """
-    log("🔍 Starte resiliente IPv6-Ermittlung...", "TRACE", "NETWORK")
+    log("Starte resiliente IPv6-Ermittlung...", "TRACE", "NETWORK")
     
     # 1. Versuche externe IPv6-Services
     ip6 = get_public_ipv6_with_fallback(config)
@@ -964,7 +1221,7 @@ def get_current_ipv6_resilient(config):
     
     # 2. Fallback auf Interface-IPv6 (nur wenn aktiviert)
     if config.get('enable_interface_fallback', True):
-        log("🔄 Fallback auf Interface-IPv6...", "INFO", "NETWORK")
+        log("Fallback auf Interface-IPv6...", "INFO", "NETWORK")
         ip6 = get_interface_ipv6_fallback(config)
         if ip6:
             return ip6
@@ -1011,6 +1268,10 @@ def handle_no_ip_available(consecutive_failures, config):
 
 def main():
     global config, log_level, console_level
+    
+    # Initialize state configuration
+    state.config = None
+    
     config_path = 'config/config.yaml'
     if not os.path.exists(config_path):
         setup_logging("INFO")
@@ -1026,15 +1287,26 @@ def main():
     with open(config_path, 'r') as f:
         try:
             config = yaml.safe_load(f)
+            state.config = config  # Update state
         except Exception as e:
             setup_logging("INFO")
             log(f"Error loading config.yaml: {e}", "ERROR")
             sys.exit(1)
     loglevel = config.get("loglevel", "INFO")
     consolelevel = config.get("consolelevel", loglevel)
+    
+    # Initialize logging FIRST before setting state variables
+    setup_logging(loglevel, config)
+    
+    # Then update both state and global variables for backward compatibility
     log_level = loglevel
     console_level = consolelevel
-    setup_logging(loglevel, config)
+    state.log_level = loglevel
+    state.console_level = consolelevel
+    
+    # Test debug logging immediately after setup
+    log(f"Logging system initialized: file_level='{loglevel}', console_level='{consolelevel}'", "DEBUG", "LOGGING")
+    log("Testing DEBUG level logging - this message should appear if consolelevel is DEBUG", "DEBUG", "LOGGING")
     
     last_config_mtime = os.path.getmtime(config_path)
     if not config or not isinstance(config, dict):
@@ -1123,10 +1395,12 @@ def main():
         log("⚠️ Keine gültige IP-Adresse konnte ermittelt werden. Aktiviere resilientes Netzwerkverhalten...", "WARNING", "MAIN")
         # Setze flag für resiliente Hauptschleife
         resilient_mode = True
+        state.resilient_mode = True
         test_ip = None
         test_ip6 = None
     else:
         resilient_mode = False
+        state.resilient_mode = False
     
     # --- PATCH: skip_update_on_startup ---
     skip_on_startup = config.get("skip_update_on_startup", False)
@@ -1142,25 +1416,34 @@ def main():
         save_last_ip("v6", test_ip6)
         last_ip = test_ip
         last_ip6 = test_ip6
+        # Update state
+        state.last_ipv4 = test_ip
+        state.last_ipv6 = test_ip6
     else:
         log("Starting initial update run for all providers...", section="MAIN")
         failed_providers = []
+        state.failed_providers = []
         for provider in providers:
             result = update_provider(provider, test_ip, test_ip6)
             section = provider.get('name', 'PROVIDER').upper()
             if not (result or result == "nochg"):
                 log(f"Provider '{provider.get('name')}' could not be updated initially.", "WARNING", section=section)
                 failed_providers.append(provider)
+                state.add_failed_provider(provider.get('name', 'unknown'))
         save_last_ip("v4", test_ip)
         save_last_ip("v6", test_ip6)
         last_ip = test_ip
+        last_ip6 = test_ip6
+        # Update state
+        state.last_ipv4 = test_ip
+        state.last_ipv6 = test_ip6
         last_ip6 = test_ip6
     # --- END PATCH ---
 
     elapsed = 0
     check_interval = 2  # Seconds, how often to check for config changes
 
-    log(f"Next run in {timer} seconds...", "TRACE", section="MAIN")
+    log(f"Next run in {timer} seconds...", "DEBUG", section="MAIN")
 
     while True:
         time.sleep(check_interval)
@@ -1173,6 +1456,7 @@ def main():
             with open(config_path, 'r') as f:
                 try:
                     config = yaml.safe_load(f)
+                    state.config = config  # Update state
                 except Exception as e:
                     log(f"Error loading config.yaml after change: {e}\nPlease check the file and refer to config.example.yaml.", "ERROR")
                     continue
@@ -1185,8 +1469,11 @@ def main():
             new_consolelevel = config.get("consolelevel", new_loglevel)
             if new_loglevel != log_level or new_consolelevel != console_level:
                 log(f"Updating log levels: loglevel={new_loglevel}, consolelevel={new_consolelevel}", "INFO", section="MAIN")
+                # Update both state and global variables
                 log_level = new_loglevel
                 console_level = new_consolelevel
+                state.log_level = new_loglevel
+                state.console_level = new_consolelevel
                 setup_logging(new_loglevel, config)
             
             timer = config.get('timer', 300)
@@ -1231,21 +1518,26 @@ def main():
             if current_ip6:
                 log(f"Current public IPv6: {current_ip6}", "TRACE", section="MAIN")
             failed_providers = []
+            state.failed_providers = []
             for provider in providers:
                 result = update_provider(provider, current_ip, current_ip6)
                 section = provider.get('name', 'PROVIDER').upper()
                 if not result:  # update_provider returns True for success (updated/nochg), False for failure
                     log(f"Provider '{provider.get('name')}' could not be updated after config change.", "WARNING", section=section)
                     failed_providers.append(provider)
+                    state.add_failed_provider(provider.get('name', 'unknown'))
             last_ip = current_ip
             last_ip6 = current_ip6
+            # Update state
+            state.last_ipv4 = current_ip
+            state.last_ipv6 = current_ip6
             elapsed = 0
-            log(f"Next run in {timer} seconds...", "TRACE", section="MAIN")
+            log(f"Next run in {timer} seconds...", "DEBUG", section="MAIN")
             continue
 
         # Timer-based update with resilient network handling
         if elapsed >= timer:
-            if resilient_mode:
+            if resilient_mode or state.resilient_mode:
                 # Verwende resiliente IP-Ermittlung
                 current_ip = get_current_ip_resilient(config)
                 
@@ -1268,7 +1560,7 @@ def main():
                     # Überschreibe timer temporär für Backoff
                     original_timer = timer
                     timer = wait_time
-                    log(f"⏳ Nächster IP-Versuch in {timer} Sekunden...", "TRACE", "MAIN")
+                    log(f"⏳ Nächster IP-Versuch in {timer} Sekunden...", "DEBUG", "MAIN")
                     continue
                 else:
                     # IP erfolgreich ermittelt - Reset failure counter
@@ -1278,6 +1570,7 @@ def main():
                     
                     # Resilient mode deaktivieren wenn wir wieder IPs haben
                     resilient_mode = False
+                    state.resilient_mode = False
                     
                     # Timer auf ursprünglichen Wert zurücksetzen
                     timer = config.get('timer', 300)
@@ -1314,6 +1607,7 @@ def main():
                 if not current_ip and not current_ip6:
                     log("🔄 Aktiviere resilientes Netzwerkverhalten aufgrund von Fehlern...", "WARNING", "MAIN")
                     resilient_mode = True
+                    state.resilient_mode = True
                     continue
                 
             # Check for IP change or failed providers
@@ -1333,7 +1627,7 @@ def main():
                     log(f"Current public IPv6: {current_ip6}", "TRACE", section="MAIN")
                     
             # Perform updates if needed
-            if ip_changed or ip6_changed or failed_providers:
+            if ip_changed or ip6_changed or failed_providers or state.failed_providers:
                 if ip_changed:
                     log(f"New IP detected: {current_ip} (previous: {last_ip}) – update will be performed.", section="MAIN")
                 if ip6_changed:
@@ -1342,6 +1636,7 @@ def main():
                 # Update all providers (retry failed providers always)
                 retry_providers = failed_providers.copy()
                 failed_providers = []
+                state.failed_providers = []
                 
                 for provider in providers:
                     # Retry if provider was in failed_providers or IP changed
@@ -1351,9 +1646,11 @@ def main():
                             section = provider.get('name', 'PROVIDER').upper()
                             if not result:  # update_provider returns True for success (updated/nochg), False for failure
                                 failed_providers.append(provider)
+                                state.add_failed_provider(provider.get('name', 'unknown'))
                         except Exception as e:
                             log(f"Provider update failed: {provider.get('name')} - {e}", "ERROR", "PROVIDER")
                             failed_providers.append(provider)
+                            state.add_failed_provider(provider.get('name', 'unknown'))
                             
                 # Save last known IPs
                 if current_ip:
@@ -1363,15 +1660,18 @@ def main():
                     
                 last_ip = current_ip
                 last_ip6 = current_ip6
+                # Update state
+                state.last_ipv4 = current_ip
+                state.last_ipv6 = current_ip6
                 elapsed = 0
-                log(f"Next run in {timer} seconds...", "TRACE", section="MAIN")
+                log(f"Next run in {timer} seconds...", "DEBUG", section="MAIN")
             else:
                 if current_ip:
                     log(f"IP unchanged ({current_ip}), no update needed.", "TRACE", section="MAIN")
                 if current_ip6:
                     log(f"IPv6 unchanged ({current_ip6}), no update needed.", "TRACE", section="MAIN")
                 elapsed = 0
-                log(f"Next run in {timer} seconds...", "TRACE", section="MAIN")
+                log(f"Next run in {timer} seconds...", "DEBUG", section="MAIN")
 
 if __name__ == "__main__":
     main()
