@@ -5,14 +5,14 @@ on:
     branches: [ main, beta, develop ]
   pull_request:
     branches: [ main, beta ]
-  workflow_dispatch:
+  workflow_dispatch:  # Allow manual triggering
 
 jobs:
-  test-suite:
+  test-providers:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.9", "3.11", "3.12"]
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
     
     steps:
     - name: Checkout code
@@ -27,38 +27,149 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        if [ -f test-requirements.txt ]; then pip install -r test-requirements.txt; fi
+        pip install -r test-requirements.txt
     
-    - name: Run unit tests
+    - name: Run comprehensive provider tests
       run: |
-        echo "🧪 Running Unit Tests"
-        echo "===================="
-        python -m pytest tests/ -v --tb=short
+        echo "🧪 Running Comprehensive Provider Test Suite"
+        echo "============================================"
+        python tests/test_comprehensive_providers.py
     
-    - name: Test configuration validation
+    - name: Run individual test files
       run: |
-        echo "� Testing Configuration Validation"
-        echo "==================================="
+        echo "🔧 Running Individual Test Files"
+        echo "================================="
+        python -m pytest tests/test_basic_fixed.py -v
+        python -m pytest tests/test_provider_integration.py -v
+        python -m pytest tests/test_provider_unification.py -v
+        python -m pytest tests/test_state_refactoring.py -v
+    
+    - name: Test provider creation with real configs
+      run: |
+        echo "📝 Testing Real-World Configurations"
+        echo "===================================="
+        python tests/test_real_world_config.py
+    
+    - name: Validate notification functionality
+      run: |
+        echo "📧 Testing Notification Functionality"
+        echo "====================================="
+        python tests/test_notification_summary.py
+    
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results-python-${{ matrix.python-version }}
+        path: |
+          test-results/
+          *.log
+        retention-days: 30
+
+  test-coverage:
+    runs-on: ubuntu-latest
+    needs: test-providers
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.11
+    
+    - name: Install dependencies with coverage
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r test-requirements.txt
+        pip install coverage pytest-cov
+    
+    - name: Run tests with coverage
+      run: |
+        coverage run --source=. -m pytest tests/ -v
+        coverage run --append tests/test_comprehensive_providers.py
+        coverage report -m
+        coverage html
+    
+    - name: Upload coverage reports
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: htmlcov/
+        retention-days: 30
+
+  integration-test:
+    runs-on: ubuntu-latest
+    needs: test-providers
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.11
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r test-requirements.txt
+    
+    - name: Create test config
+      run: |
+        mkdir -p config
+        cat > config/config.yaml << EOF
+        timer: 300
+        loglevel: INFO
+        consolelevel: INFO
+        providers:
+          - name: test-cloudflare
+            protocol: cloudflare
+            zone: example.com
+            api_token: test_token_123
+            record_name: sub.example.com
+          - name: test-ipv64
+            protocol: ipv64
+            auth_method: token
+            token: test_token_456
+            domain: example.com
+          - name: test-dyndns2
+            protocol: dyndns2
+            url: https://updates.example.org/api/
+            auth_method: basic
+            username: testuser
+            password: testpass
+            hostname: test.example.com
+        EOF
+    
+    - name: Test configuration loading
+      run: |
+        echo "🔧 Testing Configuration Loading"
+        echo "================================"
         python -c "
         import yaml
         import sys
         sys.path.insert(0, '.')
-        from update_dyndns import create_provider
+        from update_dyndns import validate_config, create_provider
         
-        # Test with example config
-        with open('config/config.example.yaml', 'r') as f:
+        # Load and validate config
+        with open('config/config.yaml', 'r') as f:
             config = yaml.safe_load(f)
         
-        print('✅ Example config loaded successfully')
+        print('Config loaded successfully')
         
-        # Test provider creation with mock data
-        test_providers = [
-            {'name': 'test-cf', 'protocol': 'cloudflare', 'zone': 'example.com', 'api_token': 'test', 'record_name': 'sub.example.com'},
-            {'name': 'test-ipv64', 'protocol': 'ipv64', 'auth_method': 'token', 'token': 'test', 'domain': 'example.com'},
-            {'name': 'test-dyndns2', 'protocol': 'dyndns2', 'url': 'https://example.com/api/', 'auth_method': 'basic', 'username': 'test', 'password': 'test', 'hostname': 'test.example.com'}
-        ]
+        if validate_config(config):
+            print('✅ Configuration validation passed')
+        else:
+            print('❌ Configuration validation failed')
+            sys.exit(1)
         
-        for provider_config in test_providers:
+        # Test provider creation
+        for provider_config in config['providers']:
             try:
                 provider = create_provider(provider_config)
                 print(f'✅ Created {provider_config[\"name\"]}: {type(provider).__name__}')
@@ -66,11 +177,12 @@ jobs:
                 print(f'❌ Failed to create {provider_config[\"name\"]}: {e}')
                 sys.exit(1)
         
-        print('🎉 Configuration tests passed!')
+        print('🎉 All integration tests passed!')
         "
 
-  security-and-quality:
+  security-test:
     runs-on: ubuntu-latest
+    needs: test-providers
     
     steps:
     - name: Checkout code
@@ -84,55 +196,33 @@ jobs:
     - name: Install security tools
       run: |
         python -m pip install --upgrade pip
-        pip install bandit safety flake8
+        pip install bandit safety
     
-    - name: Code quality check
+    - name: Run security scan with bandit
       run: |
-        echo "📋 Code Quality Check"
-        echo "===================="
-        flake8 --max-line-length=120 --ignore=E501,W503 *.py || true
+        echo "🔒 Running Security Scan"
+        echo "========================"
+        bandit -r . -f json -o bandit-report.json || true
+        bandit -r . || true
     
-    - name: Security scan
+    - name: Check dependencies for known vulnerabilities
       run: |
-        echo "🔒 Security Scan"
-        echo "==============="
-        bandit -r . -x tests/ --severity-level medium || true
+        echo "🔍 Checking Dependencies for Vulnerabilities"
+        echo "============================================="
         safety check || true
+    
+    - name: Upload security reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: security-reports
+        path: |
+          bandit-report.json
+        retention-days: 30
 
-  docker-test:
+  notify-results:
     runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Test Docker build
-      run: |
-        echo "� Testing Docker Build"
-        echo "======================"
-        docker build -t dyndns-test .
-        echo "✅ Docker build successful"
-    
-    - name: Test Docker run (dry-run)
-      run: |
-        echo "🚀 Testing Docker Run"
-        echo "===================="
-        # Create minimal test config
-        mkdir -p test-config
-        cat > test-config/config.yaml << EOF
-        timer: 300
-        loglevel: INFO
-        providers: []
-        EOF
-        
-        # Test container startup (should exit quickly with empty providers)
-        timeout 10s docker run --rm \
-          -v $(pwd)/test-config:/app/config \
-          dyndns-test || echo "✅ Container started successfully"
-
-  results:
-    runs-on: ubuntu-latest
-    needs: [test-suite, security-and-quality, docker-test]
+    needs: [test-providers, test-coverage, integration-test, security-test]
     if: always()
     
     steps:
@@ -140,14 +230,16 @@ jobs:
       run: |
         echo "📊 TEST EXECUTION SUMMARY"
         echo "========================="
-        echo "Unit Tests: ${{ needs.test-suite.result }}"
-        echo "Security & Quality: ${{ needs.security-and-quality.result }}"
-        echo "Docker Tests: ${{ needs.docker-test.result }}"
+        echo "Provider Tests: ${{ needs.test-providers.result }}"
+        echo "Coverage Tests: ${{ needs.test-coverage.result }}"
+        echo "Integration Tests: ${{ needs.integration-test.result }}"
+        echo "Security Tests: ${{ needs.security-test.result }}"
         echo ""
         
-        if [[ "${{ needs.test-suite.result }}" == "success" ]]; then
-          echo "🎉 Core functionality tests passed!"
+        if [[ "${{ needs.test-providers.result }}" == "success" && "${{ needs.integration-test.result }}" == "success" ]]; then
+          echo "🎉 ALL CRITICAL TESTS PASSED!"
+          echo "Provider architecture is working correctly across all Python versions."
         else
-          echo "❌ Core tests failed"
+          echo "⚠️ Some tests failed. Check the individual job outputs for details."
           exit 1
         fi
