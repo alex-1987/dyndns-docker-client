@@ -167,22 +167,6 @@ def notify_slack(webhook_url, message, service_name=None):
             log(f"Slack notification failed: {str(e)}", "DEBUG", "NOTIFY")
         except ImportError:
             pass
-        
-        response = requests.post(webhook_url, json=data, timeout=5)
-        
-        try:
-            from update_dyndns import log
-            log(f"Slack notification sent successfully (status: {response.status_code})", "DEBUG", "NOTIFY")
-        except ImportError:
-            pass
-            
-    except Exception as e:
-        logging.getLogger("NOTIFY").warning(human_error_message(e, "Slack-Notification"))
-        try:
-            from update_dyndns import log
-            log(f"Slack notification failed: {str(e)}", "DEBUG", "NOTIFY")
-        except ImportError:
-            pass
 
 def notify_webhook(url, message, service_name=None):
     """
@@ -317,10 +301,10 @@ def reset_all_cooldowns():
 
 def send_notifications(config, level, message, subject=None, service_name=None):
     """
-    Sends notifications to all enabled notification services that 
-    accept the given notification level.
+    Unified notification sending with service registry - eliminiert massive Code-Duplikation.
+    Vollständig kompatibel mit update_dyndns.py.
     """
-    # Import log function
+    # Import log function - kompatibel mit update_dyndns.py
     try:
         from update_dyndns import log
     except ImportError:
@@ -341,185 +325,79 @@ def send_notifications(config, level, message, subject=None, service_name=None):
         
     log(f"Notification config found with {len(config)} services configured", "DEBUG", "NOTIFY")
     
-    reset_cooldown = config.get("reset_cooldown_on_start", False)
-    
     # Cooldown reset on container start
     if config.get("reset_cooldown_on_start"):
         log("Resetting all cooldown timers on container start", "DEBUG", "NOTIFY")
         reset_all_cooldowns()
-        # Only execute once per start, e.g. via a global flag
+        # Only execute once per start
         config["reset_cooldown_on_start"] = False
 
-    if not config:
-        return
+    # Service registry - eliminates code duplication
+    services = {
+        'ntfy': lambda cfg: notify_ntfy(cfg['url'], message, service_name),
+        'discord': lambda cfg: notify_discord(cfg['webhook_url'], message, service_name),
+        'slack': lambda cfg: notify_slack(cfg['webhook_url'], message, service_name),
+        'telegram': lambda cfg: notify_telegram(cfg['bot_token'], cfg['chat_id'], message, service_name),
+        'webhook': lambda cfg: notify_webhook(cfg['url'], message, service_name),
+        'email': lambda cfg: notify_email(cfg, subject or "DynDNS Client Notification", message, service_name)
+    }
+    
+    # Process each service using unified logic
+    for service_name, send_func in services.items():
+        _process_service_notification(config, service_name, level, send_func, log)
+    
+    log(f"=== NOTIFICATION DEBUG END (processing completed for level '{level}') ===", "DEBUG", "NOTIFY")
 
-    # Helper for logging notification actions
+def _process_service_notification(config, service_name, level, send_func, log_func):
+    """
+    Process notification for a single service - eliminiert 90% Code-Duplikation.
+    Einheitliche Logik für alle 6 Services.
+    """
+    cfg = config.get(service_name)
+    
+    # Helper for logging notification actions - kompatibel mit bestehendem Code
     def log_notify(service, sent, reason=""):
         logger = logging.getLogger("NOTIFY")
         if sent:
             logger.info(f"Notification sent via {service}.")
-            log(f"Notification sent via {service}", "INFO", "NOTIFY")
+            log_func(f"Notification sent via {service}", "INFO", "NOTIFY")
         else:
             logger.info(f"Notification via {service} suppressed ({reason}).")
-            log(f"Notification via {service} suppressed: {reason}", "DEBUG", "NOTIFY")
+            log_func(f"Notification via {service} suppressed: {reason}", "DEBUG", "NOTIFY")
     
-    # Helper for debug logging of service checks
+    # Helper for debug logging - kompatibel mit bestehendem Code
     def debug_service_check(service_name, cfg, level, enabled_check, level_check, cooldown_check=None):
-        log(f"Checking {service_name} service:", "DEBUG", "NOTIFY")
-        log(f"  - Config found: {cfg is not None}", "DEBUG", "NOTIFY")
-        log(f"  - Enabled: {enabled_check}", "DEBUG", "NOTIFY") 
-        log(f"  - Level '{level}' in notify_on {cfg.get('notify_on', []) if cfg else []}: {level_check}", "DEBUG", "NOTIFY")
+        log_func(f"Checking {service_name} service:", "DEBUG", "NOTIFY")
+        log_func(f"  - Config found: {cfg is not None}", "DEBUG", "NOTIFY")
+        log_func(f"  - Enabled: {enabled_check}", "DEBUG", "NOTIFY") 
+        log_func(f"  - Level '{level}' in notify_on {cfg.get('notify_on', []) if cfg else []}: {level_check}", "DEBUG", "NOTIFY")
         if cooldown_check is not None:
-            log(f"  - Cooldown check passed: {cooldown_check}", "DEBUG", "NOTIFY")
+            log_func(f"  - Cooldown check passed: {cooldown_check}", "DEBUG", "NOTIFY")
 
-    # ntfy
-    ntfy_cfg = config.get("ntfy")
-    enabled = ntfy_cfg and ntfy_cfg.get("enabled", False)
-    level_match = enabled and level in ntfy_cfg.get("notify_on", [])
-    debug_service_check("ntfy", ntfy_cfg, level, enabled, level_match)
+    # Unified service processing logic
+    enabled = cfg and cfg.get("enabled", False)
+    level_match = enabled and level in cfg.get("notify_on", [])
+    debug_service_check(service_name, cfg, level, enabled, level_match)
     
     if enabled and level_match:
-        cooldown = ntfy_cfg.get("cooldown", 0)
-        can_send = _can_send_notification("ntfy", cooldown)
-        debug_service_check("ntfy", ntfy_cfg, level, enabled, level_match, can_send)
+        cooldown = cfg.get("cooldown", 0)
+        can_send = _can_send_notification(service_name, cooldown)
+        debug_service_check(service_name, cfg, level, enabled, level_match, can_send)
         
         if can_send:
-            notify_ntfy(ntfy_cfg["url"], message, service_name)
-            _update_last_notification_time("ntfy")
-            log_notify("ntfy", True)
+            try:
+                send_func(cfg)
+                _update_last_notification_time(service_name)
+                log_notify(service_name, True)
+            except Exception as e:
+                log_func(f"Failed to send {service_name} notification: {e}", "ERROR", "NOTIFY")
+                log_notify(service_name, False, f"send failed: {e}")
         else:
-            log_notify("ntfy", False, "cooldown active")
+            log_notify(service_name, False, "cooldown active")
     else:
-        if not ntfy_cfg:
-            log_notify("ntfy", False, "service not configured")
+        if not cfg:
+            log_notify(service_name, False, "service not configured")
         elif not enabled:
-            log_notify("ntfy", False, "service disabled")
+            log_notify(service_name, False, "service disabled")
         elif not level_match:
-            log_notify("ntfy", False, f"level '{level}' not in notify_on list")
-
-    # Discord
-    discord_cfg = config.get("discord")
-    enabled = discord_cfg and discord_cfg.get("enabled", False)
-    level_match = enabled and level in discord_cfg.get("notify_on", [])
-    debug_service_check("discord", discord_cfg, level, enabled, level_match)
-    
-    if enabled and level_match:
-        cooldown = discord_cfg.get("cooldown", 0)
-        can_send = _can_send_notification("discord", cooldown)
-        debug_service_check("discord", discord_cfg, level, enabled, level_match, can_send)
-        
-        if can_send:
-            notify_discord(discord_cfg["webhook_url"], message, service_name)
-            _update_last_notification_time("discord")
-            log_notify("discord", True)
-        else:
-            log_notify("discord", False, "cooldown active")
-    else:
-        if not discord_cfg:
-            log_notify("discord", False, "service not configured")
-        elif not enabled:
-            log_notify("discord", False, "service disabled")
-        elif not level_match:
-            log_notify("discord", False, f"level '{level}' not in notify_on list")
-
-    # Slack
-    slack_cfg = config.get("slack")
-    enabled = slack_cfg and slack_cfg.get("enabled", False)
-    level_match = enabled and level in slack_cfg.get("notify_on", [])
-    debug_service_check("slack", slack_cfg, level, enabled, level_match)
-    
-    if enabled and level_match:
-        cooldown = slack_cfg.get("cooldown", 0)
-        can_send = _can_send_notification("slack", cooldown)
-        debug_service_check("slack", slack_cfg, level, enabled, level_match, can_send)
-        
-        if can_send:
-            notify_slack(slack_cfg["webhook_url"], message, service_name)
-            _update_last_notification_time("slack")
-            log_notify("slack", True)
-        else:
-            log_notify("slack", False, "cooldown active")
-    else:
-        if not slack_cfg:
-            log_notify("slack", False, "service not configured")
-        elif not enabled:
-            log_notify("slack", False, "service disabled")
-        elif not level_match:
-            log_notify("slack", False, f"level '{level}' not in notify_on list")
-
-    # Webhook
-    webhook_cfg = config.get("webhook")
-    enabled = webhook_cfg and webhook_cfg.get("enabled", False)
-    level_match = enabled and level in webhook_cfg.get("notify_on", [])
-    debug_service_check("webhook", webhook_cfg, level, enabled, level_match)
-    
-    if enabled and level_match:
-        cooldown = webhook_cfg.get("cooldown", 0)
-        can_send = _can_send_notification("webhook", cooldown)
-        debug_service_check("webhook", webhook_cfg, level, enabled, level_match, can_send)
-        
-        if can_send:
-            notify_webhook(webhook_cfg["url"], message, service_name)
-            _update_last_notification_time("webhook")
-            log_notify("webhook", True)
-        else:
-            log_notify("webhook", False, "cooldown active")
-    else:
-        if not webhook_cfg:
-            log_notify("webhook", False, "service not configured")
-        elif not enabled:
-            log_notify("webhook", False, "service disabled")
-        elif not level_match:
-            log_notify("webhook", False, f"level '{level}' not in notify_on list")
-
-    # Telegram
-    telegram_cfg = config.get("telegram")
-    enabled = telegram_cfg and telegram_cfg.get("enabled", False)
-    level_match = enabled and level in telegram_cfg.get("notify_on", [])
-    debug_service_check("telegram", telegram_cfg, level, enabled, level_match)
-    
-    if enabled and level_match:
-        cooldown = telegram_cfg.get("cooldown", 0)
-        can_send = _can_send_notification("telegram", cooldown)
-        debug_service_check("telegram", telegram_cfg, level, enabled, level_match, can_send)
-        
-        if can_send:
-            notify_telegram(telegram_cfg["bot_token"], telegram_cfg["chat_id"], message, service_name)
-            _update_last_notification_time("telegram")
-            log_notify("telegram", True)
-        else:
-            log_notify("telegram", False, "cooldown active")
-    else:
-        if not telegram_cfg:
-            log_notify("telegram", False, "service not configured")
-        elif not enabled:
-            log_notify("telegram", False, "service disabled")
-        elif not level_match:
-            log_notify("telegram", False, f"level '{level}' not in notify_on list")
-
-    # Email
-    email_cfg = config.get("email")
-    enabled = email_cfg and email_cfg.get("enabled", False)
-    level_match = enabled and level in email_cfg.get("notify_on", [])
-    debug_service_check("email", email_cfg, level, enabled, level_match)
-    
-    if enabled and level_match:
-        cooldown = email_cfg.get("cooldown", 0)
-        can_send = _can_send_notification("email", cooldown)
-        debug_service_check("email", email_cfg, level, enabled, level_match, can_send)
-        
-        if can_send:
-            notify_email(email_cfg, subject or "DynDNS Client Notification", message, service_name)
-            _update_last_notification_time("email")
-            log_notify("email", True)
-        else:
-            log_notify("email", False, "cooldown active")
-    else:
-        if not email_cfg:
-            log_notify("email", False, "service not configured")
-        elif not enabled:
-            log_notify("email", False, "service disabled")
-        elif not level_match:
-            log_notify("email", False, f"level '{level}' not in notify_on list")
-    
-    log(f"=== NOTIFICATION DEBUG END (processing completed for level '{level}') ===", "DEBUG", "NOTIFY")
+            log_notify(service_name, False, f"level '{level}' not in notify_on list")

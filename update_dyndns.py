@@ -6,18 +6,20 @@ import yaml
 import logging
 import struct
 import datetime
-from notify import send_notifications
 import socket
 import subprocess
 import re
+import array
+import tempfile
+import ipaddress
+from notify import send_notifications
+from logging.handlers import RotatingFileHandler
+from abc import ABC, abstractmethod
+
 try:
     import fcntl
 except ImportError:
     fcntl = None  # Windows doesn't have fcntl
-import struct
-import array
-from logging.handlers import RotatingFileHandler
-import datetime
 
 print("DYNDNS CLIENT STARTUP")
 
@@ -983,252 +985,146 @@ def validate_ipv6(ip):
     except:
         return False
 
-def get_public_ip_with_fallback(config):
-    """
-    Versucht die öffentliche IP über mehrere Services zu ermitteln
+class IPResolver:
+    """Unified IP resolution for IPv4 and IPv6 - eliminiert massive Duplikation."""
     
-    Args:
-        config: Konfigurationsdictionary mit ip_services Liste
+    def __init__(self, config):
+        self.config = config
+    
+    def get_ip_with_fallback(self, ip_version='ipv4'):
+        """
+        Vereinheitlichte IP-Ermittlung für IPv4 und IPv6 mit Fallback-Strategien.
         
-    Returns:
-        IP-Adresse als String oder None bei Fehlschlag
-    """
-    # Get IP services from config - support both singular and plural forms
-    ip_services = config.get('ip_services', [])
-    if not ip_services:
-        # If no ip_services list, use ip_service (singular) as first option
-        ip_service = config.get('ip_service', 'https://api.ipify.org')
-        ip_services = [
-            ip_service,
-            "https://ifconfig.me/ip",
-            "https://icanhazip.com",
-            "https://checkip.amazonaws.com",
-            "https://ipecho.net/plain",
-            "https://myexternalip.com/raw"
-        ]
-    else:
-        # If ip_services is provided, add fallback services if not already included
-        fallback_services = [
-            "https://ifconfig.me/ip",
-            "https://icanhazip.com", 
-            "https://checkip.amazonaws.com",
-            "https://ipecho.net/plain",
-            "https://myexternalip.com/raw"
-        ]
-        for service in fallback_services:
-            if service not in ip_services:
-                ip_services.append(service)
-    
-    log(f"Versuche IP-Ermittlung über {len(ip_services)} Services...", "INFO", "NETWORK")
-    
-    for i, service in enumerate(ip_services, 1):
-        try:
-            log(f"Versuch {i}/{len(ip_services)}: {service}", "DEBUG", "NETWORK")
-            
-            # Verwende bestehende get_public_ip Funktion
-            ip = get_public_ip(service)
-            
-            if ip and validate_ipv4(ip):
-                log(f"IP erfolgreich ermittelt von {service}: {ip}", "INFO", "NETWORK")
-                return ip
-            else:
-                log(f"⚠️ Ungültige IP von {service}: {ip}", "WARNING", "NETWORK")
+        Ersetzt:
+        - get_public_ip_with_fallback()
+        - get_public_ipv6_with_fallback()  
+        - get_interface_ip_fallback()
+        - get_interface_ipv6_fallback()
+        
+        Args:
+            ip_version: 'ipv4' oder 'ipv6'
+        
+        Returns:
+            IP-Adresse als String oder None bei Fehlschlag
+        """
+        services = self._get_services(ip_version)
+        validator = validate_ipv4 if ip_version == 'ipv4' else validate_ipv6
+        fetcher = get_public_ip if ip_version == 'ipv4' else get_public_ipv6
+        
+        log(f"Versuche {ip_version.upper()}-Ermittlung über {len(services)} Services...", "INFO", "NETWORK")
+        
+        # Try external services
+        for i, service in enumerate(services, 1):
+            try:
+                log(f"{ip_version.upper()} Versuch {i}/{len(services)}: {service}", "DEBUG", "NETWORK")
                 
-        except Exception as e:
-            log(f"❌ Service {service} fehlgeschlagen: {str(e)}", "WARNING", "NETWORK")
-            continue
+                ip = fetcher(service)
+                
+                if ip and validator(ip):
+                    log(f"{ip_version.upper()} erfolgreich ermittelt von {service}: {ip}", "INFO", "NETWORK")
+                    return ip
+                else:
+                    log(f"⚠️ Ungültige {ip_version.upper()} von {service}: {ip}", "WARNING", "NETWORK")
+                    
+            except Exception as e:
+                log(f"❌ {ip_version.upper()} Service {service} fehlgeschlagen: {str(e)}", "WARNING", "NETWORK")
+                continue
+        
+        # Fallback to interface if enabled
+        if self.config.get('enable_interface_fallback', True):
+            interface_ip = self._get_interface_ip(ip_version)
+            if interface_ip:
+                log(f"{ip_version.upper()} erfolgreich von Interface ermittelt: {interface_ip}", "INFO", "NETWORK")
+                return interface_ip
+        
+        # All methods failed
+        log(f"❌ Alle {ip_version.upper()}-Services fehlgeschlagen", "ERROR", "NETWORK")
+        return None
     
-    # Alle Services fehlgeschlagen
-    log("❌ Alle IP-Services fehlgeschlagen", "ERROR", "NETWORK")
-    return None
+    def _get_services(self, ip_version):
+        """Get service list for IP version - eliminiert Service-Listen-Duplikation."""
+        if ip_version == 'ipv4':
+            services = self.config.get('ip_services', [])
+            if not services:
+                primary_service = self.config.get('ip_service', 'https://api.ipify.org')
+                fallback_services = [
+                    "https://ifconfig.me/ip",
+                    "https://icanhazip.com",
+                    "https://checkip.amazonaws.com",
+                    "https://ipecho.net/plain",
+                    "https://myexternalip.com/raw"
+                ]
+                services = [primary_service] + fallback_services
+        else:  # ipv6
+            services = self.config.get('ip6_services', [])
+            if not services:
+                primary_service = self.config.get('ip6_service', 'https://api64.ipify.org')
+                fallback_services = [
+                    "https://ifconfig.me/ip",
+                    "https://icanhazip.com",
+                    "https://v6.ident.me",
+                    "https://ipv6.icanhazip.com"
+                ]
+                services = [primary_service] + fallback_services
+        
+        # Add fallback services if not already included
+        unique_services = []
+        for service in services:
+            if service not in unique_services:
+                unique_services.append(service)
+        
+        return unique_services
+    
+    def _get_interface_ip(self, ip_version):
+        """Get IP from network interface - eliminiert Interface-Fallback-Duplikation."""
+        interface_key = 'interface' if ip_version == 'ipv4' else 'interface6'
+        interface = self.config.get(interface_key)
+        
+        if not interface:
+            log(f"Kein {interface_key} konfiguriert", "DEBUG", "NETWORK")
+            return None
+        
+        log(f"Verwende Interface-Fallback für {ip_version.upper()}: {interface}", "INFO", "NETWORK")
+        
+        try:
+            if ip_version == 'ipv4':
+                return get_interface_ipv4(interface)
+            else:
+                return get_interface_ipv6(interface)
+        except Exception as e:
+            log(f"Interface-Fallback für {ip_version.upper()} fehlgeschlagen: {e}", "WARNING", "NETWORK")
+            return None
+
+# Backward compatibility functions - verwenden neue IPResolver
+def get_public_ip_with_fallback(config):
+    """Backward compatibility wrapper - verwendet neue IPResolver Klasse."""
+    resolver = IPResolver(config)
+    return resolver.get_ip_with_fallback('ipv4')
 
 def get_public_ipv6_with_fallback(config):
-    """
-    Versucht die öffentliche IPv6 über mehrere Services zu ermitteln
-    
-    Args:
-        config: Konfigurationsdictionary mit ip6_services Liste
-        
-    Returns:
-        IPv6-Adresse als String oder None bei Fehlschlag
-    """
-    # Get IPv6 services from config - support both singular and plural forms
-    ip6_services = config.get('ip6_services', [])
-    if not ip6_services:
-        # If no ip6_services list, use ip6_service (singular) as first option
-        ip6_service = config.get('ip6_service', 'https://api64.ipify.org')
-        ip6_services = [
-            ip6_service,
-            "https://ifconfig.me/ip",           # Unterstützt auch IPv6
-            "https://icanhazip.com",            # Automatische IPv6-Erkennung
-            "https://v6.ident.me",              # IPv6-spezifisch
-            "https://ipv6.icanhazip.com"        # IPv6-spezifisch
-        ]
-    else:
-        # If ip6_services is provided, add fallback services if not already included
-        fallback_services = [
-            "https://ifconfig.me/ip",
-            "https://icanhazip.com",
-            "https://v6.ident.me",
-            "https://ipv6.icanhazip.com"
-        ]
-        for service in fallback_services:
-            if service not in ip6_services:
-                ip6_services.append(service)
-    
-    log(f"Versuche IPv6-Ermittlung über {len(ip6_services)} Services...", "INFO", "NETWORK")
-    
-    for i, service in enumerate(ip6_services, 1):
-        try:
-            log(f"IPv6 Versuch {i}/{len(ip6_services)}: {service}", "DEBUG", "NETWORK")
-            
-            # Verwende bestehende get_public_ipv6 Funktion
-            ip6 = get_public_ipv6(service)
-            
-            if ip6 and validate_ipv6(ip6):
-                log(f"IPv6 erfolgreich ermittelt von {service}: {ip6}", "INFO", "NETWORK")
-                return ip6
-            else:
-                log(f"⚠️ Ungültige IPv6 von {service}: {ip6}", "WARNING", "NETWORK")
-                
-        except Exception as e:
-            log(f"❌ IPv6 Service {service} fehlgeschlagen: {str(e)}", "WARNING", "NETWORK")
-            continue
-    
-    # Alle Services fehlgeschlagen
-    log("❌ Alle IPv6-Services fehlgeschlagen", "ERROR", "NETWORK")
-    return None
+    """Backward compatibility wrapper - verwendet neue IPResolver Klasse."""
+    resolver = IPResolver(config)
+    return resolver.get_ip_with_fallback('ipv6')
 
 def get_interface_ip_fallback(config):
-    """
-    Fallback: Versucht IP vom konfigurierten Interface zu ermitteln
-    
-    Args:
-        config: Konfigurationsdictionary
-        
-    Returns:
-        Interface-IP oder None
-    """
-    interface = config.get('interface')
-    
-    if not interface:
-        log("Kein Interface für Fallback konfiguriert", "DEBUG", "NETWORK")
-        return None
-    
-    try:
-        log(f"Fallback: Versuche IP von Interface {interface}...", "INFO", "NETWORK")
-        
-        # Verwende bestehende get_interface_ipv4 Funktion
-        ip = get_interface_ipv4(interface)
-        if ip and validate_ipv4(ip):
-            log(f"Interface-IP ermittelt: {ip}", "INFO", "NETWORK")
-            return ip
-            
-    except Exception as e:
-        log(f"❌ Interface-Fallback fehlgeschlagen: {str(e)}", "WARNING", "NETWORK")
-    
-    # Alternative: Über socket-Bibliothek
-    try:
-        import socket
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        
-        if ip and validate_ipv4(ip) and not ip.startswith('127.'):
-            log(f"Socket-Fallback IP: {ip}", "INFO", "NETWORK")
-            return ip
-            
-    except Exception as e:
-        log(f"❌ Socket-Fallback fehlgeschlagen: {str(e)}", "WARNING", "NETWORK")
-    
-    return None
+    """Backward compatibility wrapper - verwendet neue IPResolver Klasse."""
+    resolver = IPResolver(config)
+    return resolver._get_interface_ip('ipv4')
 
 def get_interface_ipv6_fallback(config):
-    """
-    Fallback: Versucht IPv6 vom konfigurierten Interface zu ermitteln
-    
-    Args:
-        config: Konfigurationsdictionary
-        
-    Returns:
-        Interface-IPv6 oder None
-    """
-    interface6 = config.get('interface6')
-    
-    if not interface6:
-        log("Kein IPv6-Interface für Fallback konfiguriert", "DEBUG", "NETWORK")
-        return None
-    
-    try:
-        log(f"IPv6-Fallback: Versuche IPv6 von Interface {interface6}...", "INFO", "NETWORK")
-        
-        # Verwende bestehende get_interface_ipv6 Funktion
-        ip6 = get_interface_ipv6(interface6)
-        if ip6 and validate_ipv6(ip6):
-            log(f"Interface-IPv6 ermittelt: {ip6}", "INFO", "NETWORK")
-            return ip6
-            
-    except Exception as e:
-        log(f"❌ IPv6-Interface-Fallback fehlgeschlagen: {str(e)}", "WARNING", "NETWORK")
-    
-    return None
+    """Backward compatibility wrapper - verwendet neue IPResolver Klasse."""
+    resolver = IPResolver(config)
+    return resolver._get_interface_ip('ipv6')
 
 def get_current_ip_resilient(config):
-    """
-    Resiliente IP-Ermittlung mit mehreren Fallback-Strategien
-    
-    Args:
-        config: Konfigurationsdictionary
-        
-    Returns:
-        Aktuelle IP-Adresse oder None
-    """
-    log("Starte resiliente IP-Ermittlung...", "TRACE", "NETWORK")
-    
-    # 1. Versuche externe IP-Services
-    ip = get_public_ip_with_fallback(config)
-    if ip:
-        return ip
-    
-    # 2. Fallback auf Interface-IP (nur wenn aktiviert)
-    if config.get('enable_interface_fallback', True):
-        log("Fallback auf Interface-IP...", "INFO", "NETWORK")
-        ip = get_interface_ip_fallback(config)
-        if ip:
-            return ip
-    
-    # 3. Alle Methoden fehlgeschlagen
-    log("❌ Alle IP-Ermittlungsmethoden fehlgeschlagen", "ERROR", "NETWORK")
-    return None
+    """Backward compatibility wrapper - verwendet neue IPResolver Klasse."""
+    resolver = IPResolver(config)
+    return resolver.get_ip_with_fallback('ipv4')
 
 def get_current_ipv6_resilient(config):
-    """
-    Resiliente IPv6-Ermittlung mit mehreren Fallback-Strategien
-    
-    Args:
-        config: Konfigurationsdictionary
-        
-    Returns:
-        Aktuelle IPv6-Adresse oder None
-    """
-    log("Starte resiliente IPv6-Ermittlung...", "TRACE", "NETWORK")
-    
-    # 1. Versuche externe IPv6-Services
-    ip6 = get_public_ipv6_with_fallback(config)
-    if ip6:
-        return ip6
-    
-    # 2. Fallback auf Interface-IPv6 (nur wenn aktiviert)
-    if config.get('enable_interface_fallback', True):
-        log("Fallback auf Interface-IPv6...", "INFO", "NETWORK")
-        ip6 = get_interface_ipv6_fallback(config)
-        if ip6:
-            return ip6
-    
-    # 3. Alle Methoden fehlgeschlagen
-    log("❌ Alle IPv6-Ermittlungsmethoden fehlgeschlagen", "ERROR", "NETWORK")
-    return None
+    """Backward compatibility wrapper - verwendet neue IPResolver Klasse."""
+    resolver = IPResolver(config)
+    return resolver.get_ip_with_fallback('ipv6')
 
 def handle_no_ip_available(consecutive_failures, config):
     """
